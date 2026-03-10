@@ -119,9 +119,8 @@ export default function Register() {
                   <Select value={stream} onValueChange={setStream}>
                     <SelectTrigger><SelectValue placeholder="Select stream" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Science">Science</SelectItem>
-                      <SelectItem value="Arts">Arts</SelectItem>
-                      <SelectItem value="Commerce">Commerce</SelectItem>
+                      <SelectItem value="Science">Natural Science</SelectItem>
+                      <SelectItem value="Arts">Social Science</SelectItem>
                     </SelectContent>
                   </Select>
                   <div className="flex items-start gap-2 rounded-xl bg-warning/10 p-3">
