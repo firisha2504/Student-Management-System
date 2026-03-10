@@ -9,7 +9,6 @@
     "dev": "nodemon src/server.js",
     "init-db": "node src/database/init.js",
     "test-db": "node test-db-connection.js",
-    "setup": "node run-complete-setup.js",
     "verify": "node verify-infrastructure.js",
     "quick-start": "node quick-start.js"
   },
