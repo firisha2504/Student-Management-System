@@ -55,7 +55,7 @@ export const api = {
   },
 
   // Profile
-  async updateProfile(data: { full_name?: string; phone?: string; address?: string; date_of_birth?: string; gender?: string }) {
+  async updateProfile(data: { full_name?: string; phone?: string; address?: string; date_of_birth?: string; gender?: string; grade_level?: number; stream?: string }) {
     return apiRequest('/profile/me', {
       method: 'PATCH',
       body: JSON.stringify(data),
