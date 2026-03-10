@@ -306,11 +306,13 @@ export default function Admin() {
 
     if (!file.type.startsWith("image/")) {
       toast({ title: "Error", description: "Please select an image file.", variant: "destructive" });
+      if (logoInputRef.current) logoInputRef.current.value = '';
       return;
     }
 
     if (file.size > 2 * 1024 * 1024) {
       toast({ title: "Error", description: "Image must be less than 2MB.", variant: "destructive" });
+      if (logoInputRef.current) logoInputRef.current.value = '';
       return;
     }
 
@@ -319,8 +321,11 @@ export default function Admin() {
       const result = await api.uploadSchoolLogo(file);
       setSchoolLogo(`http://localhost:5000${result.logoUrl}`);
       showSuccess("Logo Uploaded", "School logo has been updated successfully");
+      if (logoInputRef.current) logoInputRef.current.value = '';
     } catch (error: any) {
+      console.error('Logo upload error:', error);
       toast({ title: "Error", description: error.message || "Failed to upload logo", variant: "destructive" });
+      if (logoInputRef.current) logoInputRef.current.value = '';
     }
     setUploadingLogo(false);
   };
