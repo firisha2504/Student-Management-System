@@ -160,6 +160,15 @@ export const api = {
     return apiRequest('/students/me/stats');
   },
 
+  async getStudents(filters?: { grade_level?: number; stream?: string; section?: string }) {
+    const params = new URLSearchParams();
+    if (filters?.grade_level) params.append('grade_level', filters.grade_level.toString());
+    if (filters?.stream) params.append('stream', filters.stream);
+    if (filters?.section) params.append('section', filters.section);
+    
+    return apiRequest(`/students?${params.toString()}`);
+  },
+
   // Subjects
   async getAllSubjects(filters?: { grade_level?: number; stream?: string }) {
     const params = new URLSearchParams();
