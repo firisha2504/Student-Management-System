@@ -102,7 +102,6 @@ export default function Admin() {
 
   // Subjects management
   const [subjects, setSubjects] = useState<any[]>([]);
-  const [teachers, setTeachers] = useState<any[]>([]);
   const [loadingSubjects, setLoadingSubjects] = useState(false);
   const [subjectForm, setSubjectForm] = useState({
     subject_name: "",
@@ -111,19 +110,12 @@ export default function Admin() {
     credit_hours: 3,
     ects: 5,
     grade_level: 9,
-    stream: "Common"
-  });
-  const [editingSubject, setEditingSubject] = useState<any>(null);
-  const [assignTeacherForm, setAssignTeacherForm] = useState({
-    subject_id: 0,
-    teacher_id: 0,
-    grade_level: 9,
     stream: ""
   });
+  const [editingSubject, setEditingSubject] = useState<any>(null);
   const [showSubjectForm, setShowSubjectForm] = useState(false);
   const [showBulkSubjectForm, setShowBulkSubjectForm] = useState(false);
   const [bulkSubjects, setBulkSubjects] = useState<typeof subjectForm[]>([]);
-  const [showAssignTeacher, setShowAssignTeacher] = useState(false);
   const [credFilterRole, setCredFilterRole] = useState("all");
 
   const showSuccess = (title: string, description?: string) => setSuccessModal({ title, description });
@@ -362,19 +354,9 @@ export default function Admin() {
     setLoadingSubjects(false);
   };
 
-  const fetchTeachers = async () => {
-    try {
-      const data = await api.getAllTeachers();
-      setTeachers(data);
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message || "Failed to fetch teachers", variant: "destructive" });
-    }
-  };
-
   useEffect(() => {
     if (activeSection === "subjects") {
       fetchSubjects();
-      fetchTeachers();
     }
   }, [activeSection]);
 
@@ -394,7 +376,7 @@ export default function Admin() {
         credit_hours: 3,
         ects: 5,
         grade_level: 9,
-        stream: "Common"
+        stream: ""
       });
       setShowSubjectForm(false);
       fetchSubjects();
@@ -460,23 +442,6 @@ export default function Admin() {
     try {
       await api.deleteSubject(subjectId);
       showSuccess("Subject Deleted");
-      fetchSubjects();
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    }
-  };
-
-  const handleAssignTeacher = async () => {
-    if (!assignTeacherForm.subject_id || !assignTeacherForm.teacher_id) {
-      toast({ title: "Error", description: "Please select both subject and teacher", variant: "destructive" });
-      return;
-    }
-
-    try {
-      await api.assignTeacherToSubject(assignTeacherForm);
-      showSuccess("Teacher Assigned");
-      setShowAssignTeacher(false);
-      setAssignTeacherForm({ subject_id: 0, teacher_id: 0, grade_level: 9, stream: "" });
       fetchSubjects();
     } catch (error: any) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -960,7 +925,7 @@ export default function Admin() {
                   onClick={() => {
                     setShowBulkSubjectForm(true);
                     setBulkSubjects([
-                      { subject_name: "", subject_code: "", description: "", credit_hours: 3, ects: 5, grade_level: 9, stream: "Common" }
+                      { subject_name: "", subject_code: "", description: "", credit_hours: 3, ects: 5, grade_level: 9, stream: "" }
                     ]);
                   }}
                   variant="outline"
@@ -980,7 +945,7 @@ export default function Admin() {
                       credit_hours: 3,
                       ects: 5,
                       grade_level: 9,
-                      stream: "Common"
+                      stream: ""
                     });
                   }}
                   className="gradient-primary border-0 text-white rounded-xl"
@@ -1027,7 +992,7 @@ export default function Admin() {
                     />
                   </div>
 
-                  <div className="grid grid-cols-4 gap-4">
+                  <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label>Credit Hours</Label>
                       <Input 
@@ -1040,21 +1005,17 @@ export default function Admin() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>ECTS</Label>
-                      <Input 
-                        type="number"
-                        min="1"
-                        max="20"
-                        value={subjectForm.ects}
-                        onChange={e => setSubjectForm({...subjectForm, ects: parseInt(e.target.value) || 5})}
-                        className="rounded-xl"
-                      />
-                    </div>
-                    <div className="space-y-2">
                       <Label>Grade Level</Label>
                       <Select 
                         value={subjectForm.grade_level.toString()}
-                        onValueChange={v => setSubjectForm({...subjectForm, grade_level: parseInt(v)})}
+                        onValueChange={v => {
+                          const grade = parseInt(v);
+                          setSubjectForm({
+                            ...subjectForm, 
+                            grade_level: grade,
+                            stream: grade <= 10 ? "" : "Science"
+                          });
+                        }}
                       >
                         <SelectTrigger className="rounded-xl">
                           <SelectValue />
@@ -1067,8 +1028,11 @@ export default function Admin() {
                         </SelectContent>
                       </Select>
                     </div>
+                  </div>
+
+                  {subjectForm.grade_level >= 11 && (
                     <div className="space-y-2">
-                      <Label>Stream</Label>
+                      <Label>Stream (Grade 11-12 only)</Label>
                       <Select 
                         value={subjectForm.stream}
                         onValueChange={v => setSubjectForm({...subjectForm, stream: v})}
@@ -1077,14 +1041,12 @@ export default function Admin() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="Common">Common</SelectItem>
-                          <SelectItem value="Science">Science</SelectItem>
-                          <SelectItem value="Arts">Arts</SelectItem>
-                          <SelectItem value="Commerce">Commerce</SelectItem>
+                          <SelectItem value="Science">Natural Science</SelectItem>
+                          <SelectItem value="Arts">Social Science</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
-                  </div>
+                  )}
 
                   <div className="flex gap-2">
                     <Button 
@@ -1124,7 +1086,7 @@ export default function Admin() {
                           credit_hours: 3,
                           ects: 5,
                           grade_level: 9,
-                          stream: "Common"
+                          stream: ""
                         }]);
                       }}
                       className="rounded-xl"
@@ -1163,7 +1125,7 @@ export default function Admin() {
                             className="rounded-lg h-9"
                           />
                         </div>
-                        <div className="col-span-1 space-y-1">
+                        <div className="col-span-2 space-y-1">
                           <Label className="text-xs">Credits</Label>
                           <Input
                             type="number"
@@ -1178,28 +1140,15 @@ export default function Admin() {
                             className="rounded-lg h-9"
                           />
                         </div>
-                        <div className="col-span-1 space-y-1">
-                          <Label className="text-xs">ECTS</Label>
-                          <Input
-                            type="number"
-                            min="1"
-                            max="20"
-                            value={subject.ects}
-                            onChange={e => {
-                              const updated = [...bulkSubjects];
-                              updated[index].ects = parseInt(e.target.value) || 5;
-                              setBulkSubjects(updated);
-                            }}
-                            className="rounded-lg h-9"
-                          />
-                        </div>
                         <div className="col-span-2 space-y-1">
                           <Label className="text-xs">Grade</Label>
                           <Select
                             value={subject.grade_level.toString()}
                             onValueChange={v => {
                               const updated = [...bulkSubjects];
-                              updated[index].grade_level = parseInt(v);
+                              const grade = parseInt(v);
+                              updated[index].grade_level = grade;
+                              updated[index].stream = grade <= 10 ? "" : "Science";
                               setBulkSubjects(updated);
                             }}
                           >
@@ -1214,27 +1163,27 @@ export default function Admin() {
                             </SelectContent>
                           </Select>
                         </div>
-                        <div className="col-span-2 space-y-1">
-                          <Label className="text-xs">Stream</Label>
-                          <Select
-                            value={subject.stream}
-                            onValueChange={v => {
-                              const updated = [...bulkSubjects];
-                              updated[index].stream = v;
-                              setBulkSubjects(updated);
-                            }}
-                          >
-                            <SelectTrigger className="rounded-lg h-9">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="Common">Common</SelectItem>
-                              <SelectItem value="Science">Science</SelectItem>
-                              <SelectItem value="Arts">Arts</SelectItem>
-                              <SelectItem value="Commerce">Commerce</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
+                        {subject.grade_level >= 11 && (
+                          <div className="col-span-2 space-y-1">
+                            <Label className="text-xs">Stream</Label>
+                            <Select
+                              value={subject.stream}
+                              onValueChange={v => {
+                                const updated = [...bulkSubjects];
+                                updated[index].stream = v;
+                                setBulkSubjects(updated);
+                              }}
+                            >
+                              <SelectTrigger className="rounded-lg h-9">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Science">Natural Science</SelectItem>
+                                <SelectItem value="Arts">Social Science</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        )}
                         <div className="col-span-1">
                           <Button
                             size="sm"
@@ -1264,106 +1213,6 @@ export default function Admin() {
                         setShowBulkSubjectForm(false);
                         setBulkSubjects([]);
                       }}
-                      className="rounded-xl"
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {showAssignTeacher && (
-              <Card className="border-0 shadow-sm">
-                <CardContent className="pt-6 space-y-4">
-                  <h3 className="font-semibold text-lg">Assign Teacher to Subject</h3>
-                  
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Subject</Label>
-                      <Select 
-                        value={assignTeacherForm.subject_id.toString()}
-                        onValueChange={v => setAssignTeacherForm({...assignTeacherForm, subject_id: parseInt(v)})}
-                      >
-                        <SelectTrigger className="rounded-xl">
-                          <SelectValue placeholder="Select subject" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {subjects.map(s => (
-                            <SelectItem key={s.id} value={s.id.toString()}>
-                              {s.subject_name} ({s.subject_code})
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Teacher</Label>
-                      <Select 
-                        value={assignTeacherForm.teacher_id.toString()}
-                        onValueChange={v => setAssignTeacherForm({...assignTeacherForm, teacher_id: parseInt(v)})}
-                      >
-                        <SelectTrigger className="rounded-xl">
-                          <SelectValue placeholder="Select teacher" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {teachers.map(t => (
-                            <SelectItem key={t.id} value={t.id.toString()}>
-                              {t.full_name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Grade Level</Label>
-                      <Select 
-                        value={assignTeacherForm.grade_level.toString()}
-                        onValueChange={v => setAssignTeacherForm({...assignTeacherForm, grade_level: parseInt(v)})}
-                      >
-                        <SelectTrigger className="rounded-xl">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="9">Grade 9</SelectItem>
-                          <SelectItem value="10">Grade 10</SelectItem>
-                          <SelectItem value="11">Grade 11</SelectItem>
-                          <SelectItem value="12">Grade 12</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Stream (Optional)</Label>
-                      <Select 
-                        value={assignTeacherForm.stream}
-                        onValueChange={v => setAssignTeacherForm({...assignTeacherForm, stream: v})}
-                      >
-                        <SelectTrigger className="rounded-xl">
-                          <SelectValue placeholder="Select stream" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="">All Streams</SelectItem>
-                          <SelectItem value="Science">Science</SelectItem>
-                          <SelectItem value="Arts">Arts</SelectItem>
-                          <SelectItem value="Commerce">Commerce</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-2">
-                    <Button 
-                      onClick={handleAssignTeacher}
-                      className="gradient-primary border-0 text-white rounded-xl"
-                    >
-                      Assign Teacher
-                    </Button>
-                    <Button 
-                      variant="outline"
-                      onClick={() => setShowAssignTeacher(false)}
                       className="rounded-xl"
                     >
                       Cancel
@@ -1453,19 +1302,6 @@ export default function Admin() {
                         )}
                       </TableBody>
                     </Table>
-                  </div>
-                )}
-
-                {subjects.length > 0 && (
-                  <div className="mt-4">
-                    <Button 
-                      variant="outline"
-                      onClick={() => setShowAssignTeacher(true)}
-                      className="rounded-xl"
-                    >
-                      <UserPlus className="h-4 w-4 mr-2" />
-                      Assign Teacher to Subject
-                    </Button>
                   </div>
                 )}
               </CardContent>
