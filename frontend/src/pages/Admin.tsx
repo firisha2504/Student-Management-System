@@ -370,6 +370,7 @@ export default function Admin() {
     }
 
     try {
+      console.log('Creating subject with data:', subjectForm);
       await api.createSubject(subjectForm);
       showSuccess("Subject Created", `${subjectForm.subject_name} has been added`);
       setSubjectForm({
@@ -384,7 +385,8 @@ export default function Admin() {
       setShowSubjectForm(false);
       fetchSubjects();
     } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      console.error('Create subject error:', error);
+      toast({ title: "Error", description: error.message || "Failed to create subject", variant: "destructive" });
     }
   };
 

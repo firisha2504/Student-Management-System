@@ -74,19 +74,25 @@ router.post('/', authenticate, authorize('admin', 'registrar'), [
   body('credit_hours').isInt({ min: 1, max: 10 }),
   body('ects').isInt({ min: 1, max: 20 }),
   body('grade_level').optional().isInt({ min: 9, max: 12 }),
-  body('stream').optional().isIn(['Science', 'Arts', 'Commerce', 'Common'])
+  body('stream').optional({ nullable: true, checkFalsy: true }).isIn(['Science', 'Arts', 'Commerce', 'Common', ''])
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+      console.log('Validation errors:', errors.array());
+      return res.status(400).json({ 
+        error: 'Validation failed', 
+        details: errors.array().map(e => `${e.param}: ${e.msg}`).join(', ')
+      });
     }
 
     const { subject_name, subject_code, description, credit_hours, ects, grade_level, stream } = req.body;
+    
+    console.log('Creating subject:', { subject_name, subject_code, description, credit_hours, ects, grade_level, stream });
 
     const [result] = await pool.query(
       'INSERT INTO subjects (subject_name, subject_code, description, credit_hours, ects, grade_level, stream) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [subject_name, subject_code, description || null, credit_hours, ects, grade_level || null, stream || 'Common']
+      [subject_name, subject_code, description || null, credit_hours, ects, grade_level || null, stream || null]
     );
 
     res.status(201).json({
@@ -169,7 +175,7 @@ router.patch('/:id', authenticate, authorize('admin', 'registrar'), [
   body('credit_hours').optional().isInt({ min: 1, max: 10 }),
   body('ects').optional().isInt({ min: 1, max: 20 }),
   body('grade_level').optional().isInt({ min: 9, max: 12 }),
-  body('stream').optional().isIn(['Science', 'Arts', 'Commerce', 'Common'])
+  body('stream').optional({ nullable: true, checkFalsy: true }).isIn(['Science', 'Arts', 'Commerce', 'Common', ''])
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
