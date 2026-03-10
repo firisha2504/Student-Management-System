@@ -14,9 +14,9 @@ import SuccessModal from "@/components/SuccessModal";
 export default function Register() {
   const { profile, refreshProfile } = useAuth();
   const { toast } = useToast();
-  const [gradeLevel, setGradeLevel] = useState<string>(profile?.grade_level?.toString() || "");
-  const [stream, setStream] = useState<string>(profile?.stream || "");
-  const [section, setSection] = useState<string>((profile as any)?.section || "");
+  const [gradeLevel, setGradeLevel] = useState<string>("");
+  const [stream, setStream] = useState<string>("");
+  const [section, setSection] = useState<string>("");
   const [newPassword, setNewPassword] = useState("");
   const [saving, setSaving] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -120,10 +120,44 @@ export default function Register() {
                 <Label>Grade Level</Label>
                 <Input value={`Grade ${profile?.grade_level}`} disabled className="bg-muted/50" />
               </div>
-              {(profile as any)?.section && (
+              {(profile as any)?.section ? (
                 <div className="space-y-2">
                   <Label>Section</Label>
                   <Input value={(profile as any).section.charAt(0).toUpperCase() + (profile as any).section.slice(1)} disabled className="bg-muted/50" />
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Label>Section <span className="text-destructive">*</span></Label>
+                  <Select value={section} onValueChange={setSection}>
+                    <SelectTrigger><SelectValue placeholder="Select section" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="oromo">Oromo</SelectItem>
+                      <SelectItem value="amharic">Amharic</SelectItem>
+                      <SelectItem value="somali">Somali</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    onClick={async () => {
+                      if (!section) {
+                        toast({ title: "Error", description: "Please select a section.", variant: "destructive" });
+                        return;
+                      }
+                      setSaving(true);
+                      try {
+                        await api.updateProfile({ section });
+                        showSuccess("Success", "Section saved!");
+                        await refreshProfile();
+                      } catch (error: any) {
+                        toast({ title: "Error", description: error.message || "Failed to save section", variant: "destructive" });
+                      } finally {
+                        setSaving(false);
+                      }
+                    }}
+                    disabled={saving}
+                    className="w-full gradient-primary border-0 text-white"
+                  >
+                    {saving ? "Saving..." : "Save Section"}
+                  </Button>
                 </div>
               )}
               {profile?.stream ? (
@@ -200,9 +234,8 @@ export default function Register() {
                   <Select value={stream} onValueChange={setStream}>
                     <SelectTrigger><SelectValue placeholder="Select stream" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Science">Science</SelectItem>
-                      <SelectItem value="Arts">Arts</SelectItem>
-                      <SelectItem value="Commerce">Commerce</SelectItem>
+                      <SelectItem value="Science">Natural Science</SelectItem>
+                      <SelectItem value="Arts">Social Science</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

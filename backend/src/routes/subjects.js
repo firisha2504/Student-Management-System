@@ -73,8 +73,7 @@ router.post('/', authenticate, authorize('admin', 'registrar'), [
   body('description').optional().trim(),
   body('credit_hours').isInt({ min: 1, max: 10 }),
   body('ects').isInt({ min: 1, max: 20 }),
-  body('grade_level').optional().isInt({ min: 9, max: 12 }),
-  body('stream').optional({ nullable: true, checkFalsy: true }).isIn(['Science', 'Arts', 'Commerce', 'Common', ''])
+  body('grade_level').optional().isInt({ min: 9, max: 12 })
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -89,6 +88,11 @@ router.post('/', authenticate, authorize('admin', 'registrar'), [
     const { subject_name, subject_code, description, credit_hours, ects, grade_level, stream } = req.body;
     
     console.log('Creating subject:', { subject_name, subject_code, description, credit_hours, ects, grade_level, stream });
+
+    // Validate stream if provided
+    if (stream && !['Science', 'Arts', 'Commerce', 'Common', ''].includes(stream)) {
+      return res.status(400).json({ error: 'Invalid stream value' });
+    }
 
     const [result] = await pool.query(
       'INSERT INTO subjects (subject_name, subject_code, description, credit_hours, ects, grade_level, stream) VALUES (?, ?, ?, ?, ?, ?, ?)',
@@ -174,8 +178,7 @@ router.patch('/:id', authenticate, authorize('admin', 'registrar'), [
   body('description').optional().trim(),
   body('credit_hours').optional().isInt({ min: 1, max: 10 }),
   body('ects').optional().isInt({ min: 1, max: 20 }),
-  body('grade_level').optional().isInt({ min: 9, max: 12 }),
-  body('stream').optional({ nullable: true, checkFalsy: true }).isIn(['Science', 'Arts', 'Commerce', 'Common', ''])
+  body('grade_level').optional().isInt({ min: 9, max: 12 })
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -186,12 +189,17 @@ router.patch('/:id', authenticate, authorize('admin', 'registrar'), [
     const { id } = req.params;
     const updates = req.body;
     
+    // Validate stream if provided
+    if (updates.stream && !['Science', 'Arts', 'Commerce', 'Common', ''].includes(updates.stream)) {
+      return res.status(400).json({ error: 'Invalid stream value' });
+    }
+    
     const fields = [];
     const values = [];
     
     Object.keys(updates).forEach(key => {
       fields.push(`${key} = ?`);
-      values.push(updates[key]);
+      values.push(updates[key] || null);
     });
     
     if (fields.length === 0) {

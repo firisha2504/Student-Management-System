@@ -476,12 +476,19 @@ export default function Admin() {
   };
 
 
-  const filteredUsers = users.filter(u => {
-    const q = searchQuery.toLowerCase();
-    if (q && !u.full_name.toLowerCase().includes(q) && !u.id_number.toLowerCase().includes(q) && !u.username.toLowerCase().includes(q)) return false;
-    if (filterRole !== "all" && u.role !== filterRole) return false;
-    return true;
-  });
+  const filteredUsers = users
+    .filter(u => {
+      const q = searchQuery.toLowerCase();
+      if (q && !u.full_name.toLowerCase().includes(q) && !u.id_number.toLowerCase().includes(q) && !u.username.toLowerCase().includes(q)) return false;
+      if (filterRole !== "all" && u.role !== filterRole) return false;
+      return true;
+    })
+    .sort((a, b) => {
+      // Sort by ID number (convert to number for proper sorting)
+      const idA = parseInt(a.id_number) || 0;
+      const idB = parseInt(b.id_number) || 0;
+      return idA - idB;
+    });
 
   const roleCounts = {
     student: users.filter(u => u.role === "student").length,
@@ -570,11 +577,11 @@ export default function Admin() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {filteredUsers.map(u => (
+                        {filteredUsers.map((u, index) => (
                           <TableRow key={u.user_id} className="hover:bg-muted/30">
                             <TableCell className="font-semibold">{u.full_name}</TableCell>
                             <TableCell className="text-muted-foreground">{u.username}</TableCell>
-                            <TableCell className="font-mono text-sm">{u.id_number}</TableCell>
+                            <TableCell className="font-mono text-sm">{String(index + 1).padStart(4, '0')}</TableCell>
                             <TableCell>
                               <Badge variant="outline" className="text-xs capitalize">{u.role}</Badge>
                             </TableCell>
