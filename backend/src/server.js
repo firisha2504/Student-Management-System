@@ -41,7 +41,6 @@ app.use('/api/profile', profileRoutes);
 app.use('/api/registration', registrationRoutes);
 app.use('/api/rankings', rankingsRoutes);
 app.use('/api/assessments', assessmentsRoutes);
-app.use('/api/academic-year', academicYearRoutes);
 app.use('/api/teacher-assignments', teacherAssignmentsRoutes);
 
 // Health check
