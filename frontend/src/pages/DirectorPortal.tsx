@@ -236,20 +236,20 @@ export default function DirectorPortal() {
 
   const openAssignDialog = async (teacher: UserWithRole) => {
     setAssigningTeacher(teacher);
-    const { data: subjects } = await supabase.from("subjects").select("*");
-  const openAssignDialog = async (teacher: UserWithRole) => {
-    setAssigningTeacher(teacher);
     try {
       const subjects = await api.getAllSubjects();
       setAllSubjects(subjects || []);
-      // TODO: Implement teacher assignment endpoints in backend
-      setAssignedSubjectIds([]);
-      setAssignedGradeLevels([]);
-      setAssignedSections([]);
-      setAssignedSubSections([]);
+      
+      // Load existing assignments
+      const assignments = await api.getTeacherAssignments(parseInt(teacher.user_id));
+      setAssignedSubjectIds(assignments.subjects.map((id: number) => id.toString()));
+      setAssignedGradeLevels(assignments.grades || []);
+      setAssignedSections(assignments.sections || []);
+      setAssignedSubSections(assignments.subSections || []);
+      
       setAssignDialogOpen(true);
     } catch (error: any) {
-      toast({ title: "Error", description: "Failed to load subjects", variant: "destructive" });
+      toast({ title: "Error", description: error.message || "Failed to load assignments", variant: "destructive" });
     }
   };
 
@@ -262,11 +262,20 @@ export default function DirectorPortal() {
     if (!assigningTeacher) return;
     setSavingAssignments(true);
     try {
-      // TODO: Implement teacher assignment save endpoint in backend
-      toast({ title: "Coming Soon", description: "Teacher assignment feature will be available soon" });
+      await api.saveTeacherAssignments(parseInt(assigningTeacher.user_id), {
+        subjects: assignedSubjectIds.map(id => parseInt(id)),
+        grades: assignedGradeLevels,
+        sections: assignedSections,
+        subSections: assignedSubSections
+      });
+      
+      setSuccessModal({ 
+        title: "Assignments Saved", 
+        description: `Updated assignments for ${assigningTeacher.full_name}` 
+      });
       setAssignDialogOpen(false);
     } catch (error: any) {
-      toast({ title: "Error", description: "Failed to save assignments", variant: "destructive" });
+      toast({ title: "Error", description: error.message || "Failed to save assignments", variant: "destructive" });
     }
     setSavingAssignments(false);
   };
@@ -756,6 +765,8 @@ export default function DirectorPortal() {
             )}
           </div>
         );
+      default:
+        return null;
     }
   };
 

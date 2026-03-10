@@ -398,4 +398,16 @@ export const api = {
       body: JSON.stringify(data),
     });
   },
+
+  // Teacher Assignments
+  async getTeacherAssignments(teacherId: number) {
+    return apiRequest(`/teacher-assignments/${teacherId}`);
+  },
+
+  async saveTeacherAssignments(teacherId: number, data: { subjects: number[]; grades: number[]; sections: string[]; subSections: string[] }) {
+    return apiRequest(`/teacher-assignments/${teacherId}`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
 };

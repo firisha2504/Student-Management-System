@@ -7,8 +7,8 @@ import { generateUserId } from '../utils/idGenerator.js';
 
 const router = express.Router();
 
-// Get all users (admin only)
-router.get('/', authenticate, authorize('admin', 'registrar'), async (req, res) => {
+// Get all users (admin, registrar, director)
+router.get('/', authenticate, authorize('admin', 'registrar', 'director'), async (req, res) => {
   try {
     const [users] = await pool.query(`
       SELECT 
