@@ -12,7 +12,7 @@ import { Lock, GraduationCap, Info, Eye, EyeOff } from "lucide-react";
 import SuccessModal from "@/components/SuccessModal";
 
 export default function Register() {
-  const { profile, refreshProfile, user } = useAuth();
+  const { profile, refreshProfile } = useAuth();
   const { toast } = useToast();
   const [gradeLevel, setGradeLevel] = useState<string>(profile?.grade_level?.toString() || "");
   const [stream, setStream] = useState<string>(profile?.stream || "");
@@ -43,10 +43,13 @@ export default function Register() {
 
     setSaving(true);
     try {
-      const updates: Record<string, unknown> = {
+      const updates: any = {
         grade_level: parseInt(gradeLevel),
-        stream: needsStream ? stream : null,
       };
+      
+      if (needsStream) {
+        updates.stream = stream;
+      }
 
       // Update student profile via backend API
       await api.updateProfile(updates);
