@@ -35,47 +35,87 @@ interface AssessmentType {
   teacher_id: number;
 }
 
+const FIXED_ASSESSMENTS = ["Mid Exam", "Final Exam"];
+
 export default function TeacherPortal() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [gradeLevel, setGradeLevel] = useState("");
   const [stream, setStream] = useState("");
   const [section, setSection] = useState("");
+  const [subSection, setSubSection] = useState("");
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [students, setStudents] = useState<StudentProfile[]>([]);
   const [selectedSubject, setSelectedSubject] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  // Teacher assignments
+  const [assignedGrades, setAssignedGrades] = useState<number[]>([]);
+  const [assignedSections, setAssignedSections] = useState<string[]>([]);
+  const [assignedSubjectIds, setAssignedSubjectIds] = useState<number[]>([]);
+
+  // Assessment setup state
   const [assessmentTypes, setAssessmentTypes] = useState<AssessmentType[]>([]);
   const [newAssessmentName, setNewAssessmentName] = useState("");
   const [weights, setWeights] = useState<Record<string, string>>({});
   const [editNames, setEditNames] = useState<Record<string, string>>({});
   const [savingSetup, setSavingSetup] = useState(false);
   const [setupOpen, setSetupOpen] = useState(false);
+
+  // Score entry state
   const [selectedAssessment, setSelectedAssessment] = useState("");
   const [scores, setScores] = useState<Record<string, string>>({});
   const [existingScores, setExistingScores] = useState<Record<string, number>>({});
+
   const [successModal, setSuccessModal] = useState<{ title: string; description?: string } | null>(null);
 
   const showSuccess = (title: string, description?: string) => setSuccessModal({ title, description });
   const needsStream = gradeLevel === "11" || gradeLevel === "12";
 
+  // Fetch teacher's assignments
   useEffect(() => {
-    if (!user || !gradeLevel) return;
+    if (!user) return;
+    
+    const fetchAssignments = async () => {
+      try {
+        const assignments = await api.getMyAssignments();
+        setAssignedGrades(assignments.grades || []);
+        setAssignedSections(assignments.sections || []);
+        setAssignedSubjectIds(assignments.subjects || []);
+      } catch (error: any) {
+        console.error('Failed to fetch assignments:', error);
+      }
+    };
+    
+    fetchAssignments();
+  }, [user]);
+
+  // Fetch teacher's assigned subjects
+  useEffect(() => {
+    if (!user || !gradeLevel || assignedSubjectIds.length === 0) return;
+    
     const fetchSubjects = async () => {
       try {
         const filters: any = { grade_level: parseInt(gradeLevel) };
-        if (needsStream && stream) filters.stream = stream;
+        if (needsStream && stream) {
+          filters.stream = stream;
+        }
+        
         const allSubjects = await api.getAllSubjects(filters);
-        setSubjects(allSubjects || []);
+        // Filter to only show subjects teacher is assigned to
+        const filtered = allSubjects.filter((s: Subject) => assignedSubjectIds.includes(s.id));
+        setSubjects(filtered || []);
         setSelectedSubject("");
       } catch (error: any) {
         console.error('Failed to fetch subjects:', error);
         setSubjects([]);
       }
     };
+    
     fetchSubjects();
-  }, [gradeLevel, stream, user, needsStream]);
+  }, [gradeLevel, stream, user, needsStream, assignedSubjectIds]);
 
+  // Fetch assessment types when subject changes
   useEffect(() => {
     if (!selectedSubject || !user || !gradeLevel) {
       setAssessmentTypes([]);
@@ -92,6 +132,7 @@ export default function TeacherPortal() {
         stream: stream || undefined,
         section: section || undefined,
       });
+      
       setAssessmentTypes(types || []);
       const w: Record<string, string> = {};
       const n: Record<string, string> = {};
@@ -101,18 +142,56 @@ export default function TeacherPortal() {
       });
       setWeights(w);
       setEditNames(n);
+      
+      // Auto-create fixed assessments if missing
+      if (types.length === 0) {
+        await ensureFixedAssessments();
+      }
     } catch (error: any) {
       console.error('Failed to fetch assessment types:', error);
       setAssessmentTypes([]);
     }
   };
 
+  // Auto-create fixed assessments
+  const ensureFixedAssessments = async () => {
+    if (!selectedSubject || !user || !gradeLevel) return;
+    
+    try {
+      for (const name of FIXED_ASSESSMENTS) {
+        await api.createAssessmentType({
+          subject_id: parseInt(selectedSubject),
+          grade_level: parseInt(gradeLevel),
+          stream: stream || undefined,
+          section: section || undefined,
+          assessment_name: name,
+          weight: name === "Mid Exam" ? 30 : 40,
+        });
+      }
+      await fetchAssessmentTypes();
+    } catch (error: any) {
+      console.error('Failed to create fixed assessments:', error);
+    }
+  };
+
+  // Fetch students
   useEffect(() => {
     if (!gradeLevel || !section) return;
+    
     const fetchStudents = async () => {
       try {
-        const filters: any = { grade_level: parseInt(gradeLevel), section: section };
-        if (needsStream && stream) filters.stream = stream;
+        const filters: any = {
+          grade_level: parseInt(gradeLevel),
+          section: section,
+        };
+        if (needsStream && stream) {
+          filters.stream = stream;
+        }
+        // Only add sub_section filter if it's not "all"
+        if (subSection && subSection !== "all") {
+          filters.sub_section = subSection;
+        }
+        
         const studentsData = await api.getStudents(filters);
         setStudents(studentsData || []);
         setScores({});
@@ -121,17 +200,23 @@ export default function TeacherPortal() {
         setStudents([]);
       }
     };
+    
     fetchStudents();
-  }, [gradeLevel, stream, section, needsStream]);
+  }, [gradeLevel, stream, section, subSection, needsStream]);
 
+  // Fetch existing scores when assessment changes
   useEffect(() => {
     if (!selectedAssessment || students.length === 0) {
       setExistingScores({});
       return;
     }
+    
     const fetchExisting = async () => {
       try {
-        const scoresData = await api.getAssessmentScores({ assessment_type_id: parseInt(selectedAssessment) });
+        const scoresData = await api.getAssessmentScores({
+          assessment_type_id: parseInt(selectedAssessment),
+        });
+        
         const map: Record<string, number> = {};
         const prefilled: Record<string, string> = {};
         scoresData.forEach((score: any) => {
@@ -144,11 +229,18 @@ export default function TeacherPortal() {
         console.error('Failed to fetch existing scores:', error);
       }
     };
+    
     fetchExisting();
   }, [selectedAssessment, students]);
 
   const addCustomAssessment = async () => {
     if (!newAssessmentName.trim() || !selectedSubject || !user || !gradeLevel) return;
+    
+    if (FIXED_ASSESSMENTS.includes(newAssessmentName.trim())) {
+      toast({ title: "Error", description: "This name is reserved for fixed assessments.", variant: "destructive" });
+      return;
+    }
+    
     try {
       await api.createAssessmentType({
         subject_id: parseInt(selectedSubject),
@@ -158,6 +250,7 @@ export default function TeacherPortal() {
         assessment_name: newAssessmentName.trim(),
         weight: 0,
       });
+      
       setNewAssessmentName("");
       await fetchAssessmentTypes();
       showSuccess("Added", `"${newAssessmentName.trim()}" assessment added.`);
@@ -182,14 +275,18 @@ export default function TeacherPortal() {
       toast({ title: "Error", description: `Weights must total 100%. Currently: ${total}%`, variant: "destructive" });
       return;
     }
+    
     setSavingSetup(true);
     try {
       for (const [id, w] of Object.entries(weights)) {
         const name = editNames[id];
         const updateData: any = { weight: parseFloat(w) };
-        if (name && name.trim()) updateData.assessment_name = name.trim();
+        if (name && name.trim()) {
+          updateData.assessment_name = name.trim();
+        }
         await api.updateAssessmentType(parseInt(id), updateData);
       }
+      
       showSuccess("Saved", "Assessment setup updated.");
       await fetchAssessmentTypes();
     } catch (error: any) {
@@ -200,6 +297,7 @@ export default function TeacherPortal() {
 
   const totalWeight = Object.values(weights).reduce((sum, v) => sum + (parseFloat(v) || 0), 0);
   const updateScore = (studentId: string, value: string) => setScores(prev => ({ ...prev, [studentId]: value }));
+  
   const getMaxScore = () => {
     const at = assessmentTypes.find(a => a.id === parseInt(selectedAssessment));
     return at ? at.weight : 100;
@@ -218,12 +316,15 @@ export default function TeacherPortal() {
       toast({ title: "Error", description: "Please select an assessment.", variant: "destructive" });
       return;
     }
+    
     const maxScore = getMaxScore();
     const entries = Object.entries(scores).filter(([_, v]) => v.trim() !== "");
+    
     if (entries.length === 0) {
       toast({ title: "Error", description: "Enter at least one score.", variant: "destructive" });
       return;
     }
+    
     for (const [_, v] of entries) {
       const num = parseFloat(v);
       if (isNaN(num) || num < 0 || num > maxScore) {
@@ -231,30 +332,42 @@ export default function TeacherPortal() {
         return;
       }
     }
+
     setSubmitting(true);
+    
     try {
       const scoresToUpload = entries.map(([studentId, scoreVal]) => ({
         student_id: parseInt(studentId),
         assessment_type_id: parseInt(selectedAssessment),
         score: parseFloat(scoreVal),
       }));
+      
       await api.bulkUploadAssessmentScores({
         scores: scoresToUpload,
         term: 'Term 1',
         academic_year: getCurrentAcademicYear(),
       });
+      
       showSuccess("Success", `${entries.length} score(s) saved!`);
-      const scoresData = await api.getAssessmentScores({ assessment_type_id: parseInt(selectedAssessment) });
+      
+      const scoresData = await api.getAssessmentScores({
+        assessment_type_id: parseInt(selectedAssessment),
+      });
+      
       const map: Record<string, number> = {};
-      scoresData.forEach((score: any) => { map[score.student_id] = Number(score.score); });
+      scoresData.forEach((score: any) => {
+        map[score.student_id] = Number(score.score);
+      });
       setExistingScores(map);
     } catch (error: any) {
       toast({ title: "Error", description: error.message || "Failed to save scores", variant: "destructive" });
     }
+    
     setSubmitting(false);
   };
 
   const filledCount = Object.values(scores).filter(v => v.trim() !== "").length;
+  const isFixedAssessment = (name: string) => FIXED_ASSESSMENTS.includes(name);
 
   return (
     <div className="max-w-3xl mx-auto space-y-4">
@@ -262,6 +375,7 @@ export default function TeacherPortal() {
         <Upload className="h-6 w-6 text-primary" />
         <h1 className="text-2xl font-bold">Upload Grades</h1>
       </div>
+
       <Card className="border-0 shadow-sm">
         <CardContent className="pt-6 space-y-4">
           <div className="grid grid-cols-2 gap-4">
@@ -270,10 +384,12 @@ export default function TeacherPortal() {
               <Select value={gradeLevel} onValueChange={(v) => { setGradeLevel(v); setStream(""); setSection(""); setSelectedSubject(""); }}>
                 <SelectTrigger className="rounded-xl"><SelectValue placeholder="Select grade" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="9">Grade 9</SelectItem>
-                  <SelectItem value="10">Grade 10</SelectItem>
-                  <SelectItem value="11">Grade 11</SelectItem>
-                  <SelectItem value="12">Grade 12</SelectItem>
+                  {[9, 10, 11, 12].filter(g => assignedGrades.includes(g)).map(g => (
+                    <SelectItem key={g} value={String(g)}>Grade {g}</SelectItem>
+                  ))}
+                  {assignedGrades.length === 0 && (
+                    <SelectItem value="none" disabled>No grades assigned</SelectItem>
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -282,9 +398,29 @@ export default function TeacherPortal() {
               <Select value={section} onValueChange={setSection}>
                 <SelectTrigger className="rounded-xl"><SelectValue placeholder="Select section" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="oromo">Oromo</SelectItem>
-                  <SelectItem value="amharic">Amharic</SelectItem>
-                  <SelectItem value="somali">Somali</SelectItem>
+                  {assignedSections.map(s => (
+                    <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>
+                  ))}
+                  {assignedSections.length === 0 && (
+                    <SelectItem value="none" disabled>No sections assigned</SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Sub-Section (Optional)</Label>
+              <Select value={subSection} onValueChange={setSubSection}>
+                <SelectTrigger className="rounded-xl"><SelectValue placeholder="All sub-sections" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="A">A</SelectItem>
+                  <SelectItem value="B">B</SelectItem>
+                  <SelectItem value="C">C</SelectItem>
+                  <SelectItem value="D">D</SelectItem>
+                  <SelectItem value="E">E</SelectItem>
+                  <SelectItem value="F">F</SelectItem>
+                  <SelectItem value="G">G</SelectItem>
+                  <SelectItem value="H">H</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -314,6 +450,7 @@ export default function TeacherPortal() {
           </div>
         </CardContent>
       </Card>
+
       {selectedSubject && (
         <div className="space-y-4">
           <Collapsible open={setupOpen} onOpenChange={setSetupOpen}>
@@ -350,8 +487,8 @@ export default function TeacherPortal() {
                           const newW: Record<string, string> = {};
                           let midId = "", finalId = "";
                           assessmentTypes.forEach(a => {
-                            if (a.assessment_name.toLowerCase().includes("mid")) midId = a.id.toString();
-                            if (a.assessment_name.toLowerCase().includes("final")) finalId = a.id.toString();
+                            if (a.assessment_name === "Mid Exam") midId = a.id.toString();
+                            if (a.assessment_name === "Final Exam") finalId = a.id.toString();
                           });
                           assessmentTypes.forEach(a => {
                             if (a.id.toString() === midId) newW[a.id] = "30";
@@ -366,8 +503,8 @@ export default function TeacherPortal() {
                           const newW: Record<string, string> = {};
                           let midId = "", finalId = "";
                           assessmentTypes.forEach(a => {
-                            if (a.assessment_name.toLowerCase().includes("mid")) midId = a.id.toString();
-                            if (a.assessment_name.toLowerCase().includes("final")) finalId = a.id.toString();
+                            if (a.assessment_name === "Mid Exam") midId = a.id.toString();
+                            if (a.assessment_name === "Final Exam") finalId = a.id.toString();
                           });
                           assessmentTypes.forEach(a => {
                             if (a.id.toString() === midId) newW[a.id] = "40";
@@ -387,15 +524,23 @@ export default function TeacherPortal() {
                         <div key={a.id} className="space-y-1.5">
                           <div className="flex items-center gap-3">
                             <div className="flex-1 flex items-center gap-2 min-w-0">
-                              <Input value={editNames[a.id] || ""} onChange={(e) => setEditNames(prev => ({ ...prev, [a.id]: e.target.value }))} className="h-8 text-sm rounded-lg font-medium" placeholder="Assessment name" />
+                              {isFixedAssessment(a.assessment_name) ? (
+                                <span className="text-sm font-medium truncate">{a.assessment_name}</span>
+                              ) : (
+                                <Input value={editNames[a.id] || ""} onChange={(e) => setEditNames(prev => ({ ...prev, [a.id]: e.target.value }))} className="h-8 text-sm rounded-lg font-medium" placeholder="Assessment name" />
+                              )}
+                              {isFixedAssessment(a.assessment_name) && <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-medium">Fixed</span>}
                             </div>
                             <div className="flex items-center gap-1.5">
                               <Input type="number" min={0} max={100} value={weights[a.id] || ""} onChange={(e) => setWeights(prev => ({ ...prev, [a.id]: e.target.value }))} className="w-20 h-8 text-sm rounded-lg text-center" placeholder="%" />
                               <span className="text-xs text-muted-foreground">%</span>
                             </div>
-                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => deleteAssessment(a.id)}>
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
+                            {!isFixedAssessment(a.assessment_name) && (
+                              <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => deleteAssessment(a.id)}>
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                            {isFixedAssessment(a.assessment_name) && <div className="w-8" />}
                           </div>
                           <Progress value={parseFloat(weights[a.id] || "0")} className="h-1.5" />
                         </div>

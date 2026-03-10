@@ -164,9 +164,6 @@ export default function RegistrarPortal() {
       const nameHash = row.fullName.toLowerCase().replace(/\s+/g, '');
       const email = `${nameHash}.${timestamp}.${i}.${randomSuffix}@school.com`;
       
-      // Generate username as firstname.lastname.id (e.g., "john.doe.123")
-      const nameParts = row.fullName.trim().toLowerCase().split(/\s+/);
-      const customUsername = nameParts.join('.') + '.' + row.idNumber.padStart(3, '0');
       const password = "pass" + row.idNumber.padStart(3, '0');
       
       try {
@@ -175,8 +172,7 @@ export default function RegistrarPortal() {
           password,
           full_name: row.fullName.trim(),
           role: "student",
-          gender: row.gender || undefined,
-          custom_username: customUsername
+          gender: row.gender || undefined
         });
         
         creds.push({ 

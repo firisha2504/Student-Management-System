@@ -41,8 +41,7 @@ router.post('/', authenticate, authorize('admin', 'registrar'), [
   body('email').isEmail().normalizeEmail(),
   body('password').isLength({ min: 6 }),
   body('full_name').notEmpty().trim(),
-  body('role').isIn(['student', 'teacher', 'admin', 'registrar', 'director', 'parent']),
-  body('custom_username').optional().trim()
+  body('role').isIn(['student', 'teacher', 'admin', 'registrar', 'director', 'parent'])
 ], async (req, res) => {
   const connection = await pool.getConnection();
   
@@ -52,29 +51,22 @@ router.post('/', authenticate, authorize('admin', 'registrar'), [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { email, password, full_name, role, phone, address, custom_username } = req.body;
+    const { email, password, full_name, role, phone, address } = req.body;
 
     await connection.beginTransaction();
 
-    // Generate username based on role or use custom username
-    let username;
-    if (custom_username) {
-      // Use custom username if provided (for students: name + id)
-      username = custom_username;
-      
-      // Check if username already exists
-      const [existingUser] = await connection.query(
-        'SELECT id FROM users WHERE username = ?',
-        [username]
-      );
-      
-      if (existingUser.length > 0) {
-        await connection.rollback();
-        return res.status(400).json({ error: 'Username already exists' });
-      }
-    } else {
-      // Auto-generate username for non-students
-      username = await generateUserId(role);
+    // Generate username based on role
+    const username = await generateUserId(role);
+    
+    // Check if username already exists (shouldn't happen with auto-generation, but safety check)
+    const [existingUser] = await connection.query(
+      'SELECT id FROM users WHERE username = ?',
+      [username]
+    );
+    
+    if (existingUser.length > 0) {
+      await connection.rollback();
+      return res.status(400).json({ error: 'Username already exists' });
     }
 
     // Create user

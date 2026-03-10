@@ -4,6 +4,47 @@ import { authenticate, authorize } from '../middleware/auth.js';
 
 const router = express.Router();
 
+// Get current teacher's assignments (for teachers to see their own)
+router.get('/me', authenticate, authorize('teacher'), async (req, res) => {
+  try {
+    const teacherId = req.userId;
+
+    // Get assigned subjects
+    const [subjects] = await pool.query(
+      'SELECT subject_id FROM teacher_subjects WHERE teacher_id = ?',
+      [teacherId]
+    );
+
+    // Get assigned grades
+    const [grades] = await pool.query(
+      'SELECT DISTINCT grade_level FROM teacher_subjects WHERE teacher_id = ?',
+      [teacherId]
+    );
+
+    // Get assigned sections
+    const [sections] = await pool.query(
+      'SELECT section FROM teacher_sections WHERE teacher_id = ?',
+      [teacherId]
+    );
+
+    // Get assigned sub-sections
+    const [subSections] = await pool.query(
+      'SELECT sub_section FROM teacher_sub_sections WHERE teacher_id = ?',
+      [teacherId]
+    );
+
+    res.json({
+      subjects: subjects.map(s => s.subject_id),
+      grades: grades.map(g => g.grade_level),
+      sections: sections.map(s => s.section),
+      subSections: subSections.map(s => s.sub_section)
+    });
+  } catch (error) {
+    console.error('Get my assignments error:', error);
+    res.status(500).json({ error: 'Failed to fetch assignments' });
+  }
+});
+
 // Get teacher assignments
 router.get('/:teacherId', authenticate, authorize('admin', 'registrar', 'director'), async (req, res) => {
   try {

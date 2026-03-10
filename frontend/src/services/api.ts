@@ -108,7 +108,7 @@ export const api = {
     return apiRequest('/users');
   },
 
-  async createUser(data: { email: string; password: string; full_name: string; role: string; phone?: string; address?: string; gender?: string; custom_username?: string }) {
+  async createUser(data: { email: string; password: string; full_name: string; role: string; phone?: string; address?: string; gender?: string }) {
     return apiRequest('/users', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -411,6 +411,10 @@ export const api = {
   // Teacher Assignments
   async getTeacherAssignments(teacherId: number) {
     return apiRequest(`/teacher-assignments/${teacherId}`);
+  },
+
+  async getMyAssignments() {
+    return apiRequest('/teacher-assignments/me');
   },
 
   async saveTeacherAssignments(teacherId: number, data: { subjects: number[]; grades: number[]; sections: string[]; subSections: string[] }) {

@@ -8,13 +8,13 @@ const router = express.Router();
 // Get all students
 router.get('/', authenticate, authorize('admin', 'registrar', 'director', 'teacher'), async (req, res) => {
   try {
-    const { grade_level, stream } = req.query;
+    const { grade_level, stream, section, sub_section } = req.query;
     
     let query = `
       SELECT 
-        u.id, u.email,
+        u.id as user_id, u.username, u.email,
         p.full_name, p.phone, p.address, p.date_of_birth, p.gender,
-        sp.admission_number, sp.grade_level, sp.stream, sp.enrollment_date
+        sp.admission_number, sp.grade_level, sp.stream, sp.section, sp.sub_section, sp.enrollment_date
       FROM users u
       INNER JOIN user_roles ur ON u.id = ur.user_id
       INNER JOIN profiles p ON u.id = p.user_id
@@ -34,7 +34,17 @@ router.get('/', authenticate, authorize('admin', 'registrar', 'director', 'teach
       params.push(stream);
     }
     
-    query += ' ORDER BY sp.grade_level, p.full_name';
+    if (section) {
+      query += ' AND sp.section = ?';
+      params.push(section);
+    }
+    
+    if (sub_section) {
+      query += ' AND sp.sub_section = ?';
+      params.push(sub_section);
+    }
+    
+    query += ' ORDER BY sp.grade_level, sp.section, sp.sub_section, p.full_name';
     
     const [students] = await pool.query(query, params);
     res.json(students);
