@@ -1,18 +1,31 @@
 import { useEffect, useState } from "react";
-// Supabase removed - replace with your backend API
+import { api } from "@/services/api";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, ClipboardList, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface Subject {
-  id: string;
+  id: number;
   subject_name: string;
+  subject_code: string;
   grade_level: number;
   stream: string | null;
+  credit_hours: number;
+  ects: number;
+}
+
+interface RegistrationStatus {
+  registered: boolean;
+  registration?: {
+    id: number;
+    academic_year: string;
+    registration_date: string;
+    total_credit_hours: number;
+    total_ects: number;
+  };
 }
 
 export default function StudentRegistration() {
@@ -21,105 +34,93 @@ export default function StudentRegistration() {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [loading, setLoading] = useState(true);
   const [registering, setRegistering] = useState(false);
-  const [isRegistered, setIsRegistered] = useState(false);
-  const [registeredAt, setRegisteredAt] = useState<string | null>(null);
-  const [hasPromotion, setHasPromotion] = useState(false);
-  const [promotionInfo, setPromotionInfo] = useState<{ old_grade: number; new_grade: number | null; status: string; academic_year: string } | null>(null);
+  const [registrationStatus, setRegistrationStatus] = useState<RegistrationStatus | null>(null);
 
   const currentYear = (() => {
     const now = new Date();
     const year = now.getFullYear();
     const month = now.getMonth();
-    return month >= 8 ? `${year}/${year + 1}` : `${year - 1}/${year}`;
+    return month >= 8 ? `${year}-${year + 1}` : `${year - 1}-${year}`;
   })();
 
   useEffect(() => {
     if (!user || !profile) return;
 
     const fetchData = async () => {
-      // Check if student has been promoted (has a promotion_history record)
-      const { data: promoData } = await supabase
-        .from("promotion_history")
-        .select("old_grade, new_grade, status, academic_year")
-        .eq("student_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      try {
+        setLoading(true);
 
-      if (promoData && (promoData.status === "promoted" || promoData.status === "retained")) {
-        setHasPromotion(true);
-        setPromotionInfo(promoData);
-      }
+        // Check registration status
+        const statusData = await api.getRegistrationStatus();
+        setRegistrationStatus(statusData);
 
-      // Check if already registered for current academic year
-      const { data: regData } = await supabase
-        .from("student_registrations")
-        .select("*")
-        .eq("student_id", user.id)
-        .eq("academic_year", currentYear)
-        .maybeSingle();
+        // Fetch available courses for student's grade
+        if (profile.grade_level) {
+          const filters: any = { grade_level: profile.grade_level };
+          if (profile.grade_level >= 11 && profile.stream) {
+            filters.stream = profile.stream;
+          }
 
-      if (regData) {
-        setIsRegistered(true);
-        setRegisteredAt(regData.registered_at);
-      }
-
-      // Fetch subjects for student's grade
-      if (profile.grade_level) {
-        let query = supabase.from("subjects").select("*").eq("grade_level", profile.grade_level);
-        if (profile.grade_level >= 11 && profile.stream) {
-          query = query.eq("stream", profile.stream);
-        } else {
-          query = query.is("stream", null);
+          const subjectsData = await api.getAllSubjects(filters);
+          setSubjects(subjectsData);
         }
-        const { data: subjectData } = await query;
-        setSubjects(subjectData || []);
+      } catch (error) {
+        console.error("Error fetching registration data:", error);
+        toast({
+          title: "Error",
+          description: "Failed to load registration data",
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
+
     fetchData();
-  }, [user, profile, currentYear]);
+  }, [user, profile, toast]);
 
   const handleRegister = async () => {
-    if (!user || !profile) return;
+    if (!user || !profile || subjects.length === 0) return;
+
     setRegistering(true);
 
-    const { error } = await supabase.from("student_registrations").insert({
-      student_id: user.id,
-      academic_year: currentYear,
-      grade_level: profile.grade_level!,
-      stream: profile.stream || null,
-      section: profile.section || null,
-    });
+    try {
+      // Prepare courses for registration
+      const courses = subjects.map(subject => ({
+        subject_id: subject.id,
+        credit_hours: subject.credit_hours,
+        ects: subject.ects,
+        instructor: "TBA",
+      }));
 
-    if (error) {
-      toast({ title: "Registration failed", description: error.message, variant: "destructive" });
-    } else {
-      setIsRegistered(true);
-      setRegisteredAt(new Date().toISOString());
-      toast({ title: "Registered Successfully!", description: `You are now registered for ${currentYear}.` });
+      await api.registerCourses(courses);
+
+      // Refresh registration status
+      const statusData = await api.getRegistrationStatus();
+      setRegistrationStatus(statusData);
+
+      toast({
+        title: "Registered Successfully!",
+        description: `You are now registered for ${currentYear}.`,
+      });
+    } catch (error: any) {
+      console.error("Registration error:", error);
+      toast({
+        title: "Registration failed",
+        description: error.message || "Failed to register for courses",
+        variant: "destructive",
+      });
+    } finally {
+      setRegistering(false);
     }
-    setRegistering(false);
   };
 
   if (loading) {
     return <p className="text-muted-foreground p-6">Loading...</p>;
   }
 
-  // If student has not been promoted yet, show a message
-  if (!hasPromotion && !isRegistered) {
-    return (
-      <Card className="border-0 shadow-md">
-        <CardContent className="p-8 text-center">
-          <ClipboardList className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-          <h3 className="text-lg font-bold text-foreground mb-2">Registration Not Available</h3>
-          <p className="text-muted-foreground text-sm">
-            You have not been promoted yet. Registration will be available after the year-end promotion process is completed by the administrator.
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
+  const isRegistered = registrationStatus?.registered || false;
+  const registration = registrationStatus?.registration;
 
   return (
     <div className="space-y-6">
@@ -134,16 +135,10 @@ export default function StudentRegistration() {
               <h2 className="text-xl font-extrabold">Course Registration</h2>
               <p className="text-white/60 text-sm">
                 Academic Year {currentYear} · Grade {profile?.grade_level}
-                {profile?.stream ? ` · ${profile.stream.charAt(0).toUpperCase() + profile.stream.slice(1)}` : ""}
+                {profile?.stream
+                  ? ` · ${profile.stream.charAt(0).toUpperCase() + profile.stream.slice(1)}`
+                  : ""}
               </p>
-              {promotionInfo && (
-                <p className="text-white/80 text-xs mt-1">
-                  {promotionInfo.status === "promoted" 
-                    ? `Promoted from Grade ${promotionInfo.old_grade} → Grade ${promotionInfo.new_grade}`
-                    : `Retained at Grade ${promotionInfo.new_grade}`
-                  } ({promotionInfo.academic_year})
-                </p>
-              )}
             </div>
           </div>
         </div>
@@ -159,16 +154,18 @@ export default function StudentRegistration() {
               <span className="font-semibold text-foreground">{profile?.full_name}</span>
             </div>
             <div>
-              <span className="text-muted-foreground">ID:</span>{" "}
-              <span className="font-semibold text-foreground">{profile?.id_number}</span>
+              <span className="text-muted-foreground">Username:</span>{" "}
+              <span className="font-semibold text-foreground">{user?.username}</span>
             </div>
             <div>
               <span className="text-muted-foreground">Grade:</span>{" "}
               <span className="font-semibold text-foreground">{profile?.grade_level}</span>
             </div>
             <div>
-              <span className="text-muted-foreground">Section:</span>{" "}
-              <span className="font-semibold text-foreground capitalize">{profile?.section || "—"}</span>
+              <span className="text-muted-foreground">Stream:</span>{" "}
+              <span className="font-semibold text-foreground capitalize">
+                {profile?.stream || "—"}
+              </span>
             </div>
           </div>
 
@@ -178,8 +175,9 @@ export default function StudentRegistration() {
               <TableRow className="bg-muted/50">
                 <TableHead className="font-semibold w-12">#</TableHead>
                 <TableHead className="font-semibold">Subject</TableHead>
-                <TableHead className="font-semibold">Grade Level</TableHead>
-                <TableHead className="font-semibold">Stream</TableHead>
+                <TableHead className="font-semibold">Code</TableHead>
+                <TableHead className="font-semibold text-center">Credit Hrs</TableHead>
+                <TableHead className="font-semibold text-center">ECTS</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -187,21 +185,29 @@ export default function StudentRegistration() {
                 <TableRow key={sub.id}>
                   <TableCell className="text-sm">{idx + 1}</TableCell>
                   <TableCell className="text-sm font-medium">{sub.subject_name}</TableCell>
-                  <TableCell className="text-sm">Grade {sub.grade_level}</TableCell>
-                  <TableCell className="text-sm">{sub.stream ? sub.stream.charAt(0).toUpperCase() + sub.stream.slice(1) : "—"}</TableCell>
+                  <TableCell className="text-sm">{sub.subject_code}</TableCell>
+                  <TableCell className="text-sm text-center">{sub.credit_hours}</TableCell>
+                  <TableCell className="text-sm text-center">{sub.ects}</TableCell>
                 </TableRow>
               ))}
               {subjects.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
                     No subjects found for your grade level.
                   </TableCell>
                 </TableRow>
               )}
               <TableRow className="bg-muted/30 font-semibold">
-                <TableCell colSpan={2} className="text-right text-sm">Total Subjects</TableCell>
-                <TableCell className="text-sm font-bold">{subjects.length}</TableCell>
-                <TableCell />
+                <TableCell colSpan={2} className="text-right text-sm">
+                  Total
+                </TableCell>
+                <TableCell className="text-sm font-bold">{subjects.length} subjects</TableCell>
+                <TableCell className="text-sm text-center font-bold">
+                  {subjects.reduce((sum, s) => sum + s.credit_hours, 0)} hrs
+                </TableCell>
+                <TableCell className="text-sm text-center font-bold">
+                  {subjects.reduce((sum, s) => sum + s.ects, 0)} ECTS
+                </TableCell>
               </TableRow>
             </TableBody>
           </Table>
@@ -214,11 +220,24 @@ export default function StudentRegistration() {
                   <CheckCircle2 className="h-6 w-6" />
                   <span className="text-lg font-extrabold uppercase">Registered Successfully</span>
                 </div>
-                {registeredAt && (
+                {registration?.registration_date && (
                   <p className="text-xs text-muted-foreground">
-                    Registered on {new Date(registeredAt).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}
+                    Registered on{" "}
+                    {new Date(registration.registration_date).toLocaleDateString("en-US", {
+                      year: "numeric",
+                      month: "long",
+                      day: "numeric",
+                    })}
                   </p>
                 )}
+                <div className="flex gap-4 text-xs text-muted-foreground mt-2">
+                  <span>
+                    Total Credit Hours: <strong>{registration?.total_credit_hours || 0}</strong>
+                  </span>
+                  <span>
+                    Total ECTS: <strong>{registration?.total_ects || 0}</strong>
+                  </span>
+                </div>
               </div>
             ) : (
               <Button
