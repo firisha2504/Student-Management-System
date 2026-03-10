@@ -121,6 +121,8 @@ export default function Admin() {
     stream: ""
   });
   const [showSubjectForm, setShowSubjectForm] = useState(false);
+  const [showBulkSubjectForm, setShowBulkSubjectForm] = useState(false);
+  const [bulkSubjects, setBulkSubjects] = useState<typeof subjectForm[]>([]);
   const [showAssignTeacher, setShowAssignTeacher] = useState(false);
   const [credFilterRole, setCredFilterRole] = useState("all");
 
@@ -395,6 +397,43 @@ export default function Admin() {
         stream: "Common"
       });
       setShowSubjectForm(false);
+      fetchSubjects();
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+  };
+
+  const handleBulkCreateSubjects = async () => {
+    // Validate all subjects
+    const validSubjects = bulkSubjects.filter(s => s.subject_name && s.subject_code);
+    
+    if (validSubjects.length === 0) {
+      toast({ title: "Error", description: "At least one subject with name and code is required", variant: "destructive" });
+      return;
+    }
+
+    try {
+      let successCount = 0;
+      let errorCount = 0;
+      
+      for (const subject of validSubjects) {
+        try {
+          await api.createSubject(subject);
+          successCount++;
+        } catch (error) {
+          errorCount++;
+        }
+      }
+      
+      if (successCount > 0) {
+        showSuccess(
+          "Subjects Created", 
+          `${successCount} subject${successCount > 1 ? 's' : ''} created successfully${errorCount > 0 ? `, ${errorCount} failed` : ''}`
+        );
+      }
+      
+      setShowBulkSubjectForm(false);
+      setBulkSubjects([]);
       fetchSubjects();
     } catch (error: any) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -916,25 +955,40 @@ export default function Admin() {
                 <h2 className="text-xl font-bold text-foreground">Subject Management</h2>
                 <p className="text-sm text-muted-foreground">Create and manage subjects with credit hours and ECTS</p>
               </div>
-              <Button 
-                onClick={() => {
-                  setShowSubjectForm(true);
-                  setEditingSubject(null);
-                  setSubjectForm({
-                    subject_name: "",
-                    subject_code: "",
-                    description: "",
-                    credit_hours: 3,
-                    ects: 5,
-                    grade_level: 9,
-                    stream: "Common"
-                  });
-                }}
-                className="gradient-primary border-0 text-white rounded-xl"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Add Subject
-              </Button>
+              <div className="flex gap-2">
+                <Button 
+                  onClick={() => {
+                    setShowBulkSubjectForm(true);
+                    setBulkSubjects([
+                      { subject_name: "", subject_code: "", description: "", credit_hours: 3, ects: 5, grade_level: 9, stream: "Common" }
+                    ]);
+                  }}
+                  variant="outline"
+                  className="rounded-xl"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Bulk Add
+                </Button>
+                <Button 
+                  onClick={() => {
+                    setShowSubjectForm(true);
+                    setEditingSubject(null);
+                    setSubjectForm({
+                      subject_name: "",
+                      subject_code: "",
+                      description: "",
+                      credit_hours: 3,
+                      ects: 5,
+                      grade_level: 9,
+                      stream: "Common"
+                    });
+                  }}
+                  className="gradient-primary border-0 text-white rounded-xl"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Subject
+                </Button>
+              </div>
             </div>
 
             {showSubjectForm && (
@@ -1044,6 +1098,171 @@ export default function Admin() {
                       onClick={() => {
                         setShowSubjectForm(false);
                         setEditingSubject(null);
+                      }}
+                      className="rounded-xl"
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {showBulkSubjectForm && (
+              <Card className="border-0 shadow-sm">
+                <CardContent className="pt-6 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold text-lg">Bulk Create Subjects</h3>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setBulkSubjects([...bulkSubjects, {
+                          subject_name: "",
+                          subject_code: "",
+                          description: "",
+                          credit_hours: 3,
+                          ects: 5,
+                          grade_level: 9,
+                          stream: "Common"
+                        }]);
+                      }}
+                      className="rounded-xl"
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      Add Row
+                    </Button>
+                  </div>
+
+                  <div className="space-y-3 max-h-96 overflow-y-auto">
+                    {bulkSubjects.map((subject, index) => (
+                      <div key={index} className="grid grid-cols-12 gap-2 items-end p-3 bg-muted/30 rounded-lg">
+                        <div className="col-span-3 space-y-1">
+                          <Label className="text-xs">Subject Name</Label>
+                          <Input
+                            value={subject.subject_name}
+                            onChange={e => {
+                              const updated = [...bulkSubjects];
+                              updated[index].subject_name = e.target.value;
+                              setBulkSubjects(updated);
+                            }}
+                            placeholder="e.g., Mathematics"
+                            className="rounded-lg h-9"
+                          />
+                        </div>
+                        <div className="col-span-2 space-y-1">
+                          <Label className="text-xs">Code</Label>
+                          <Input
+                            value={subject.subject_code}
+                            onChange={e => {
+                              const updated = [...bulkSubjects];
+                              updated[index].subject_code = e.target.value;
+                              setBulkSubjects(updated);
+                            }}
+                            placeholder="MATH101"
+                            className="rounded-lg h-9"
+                          />
+                        </div>
+                        <div className="col-span-1 space-y-1">
+                          <Label className="text-xs">Credits</Label>
+                          <Input
+                            type="number"
+                            min="1"
+                            max="10"
+                            value={subject.credit_hours}
+                            onChange={e => {
+                              const updated = [...bulkSubjects];
+                              updated[index].credit_hours = parseInt(e.target.value) || 3;
+                              setBulkSubjects(updated);
+                            }}
+                            className="rounded-lg h-9"
+                          />
+                        </div>
+                        <div className="col-span-1 space-y-1">
+                          <Label className="text-xs">ECTS</Label>
+                          <Input
+                            type="number"
+                            min="1"
+                            max="20"
+                            value={subject.ects}
+                            onChange={e => {
+                              const updated = [...bulkSubjects];
+                              updated[index].ects = parseInt(e.target.value) || 5;
+                              setBulkSubjects(updated);
+                            }}
+                            className="rounded-lg h-9"
+                          />
+                        </div>
+                        <div className="col-span-2 space-y-1">
+                          <Label className="text-xs">Grade</Label>
+                          <Select
+                            value={subject.grade_level.toString()}
+                            onValueChange={v => {
+                              const updated = [...bulkSubjects];
+                              updated[index].grade_level = parseInt(v);
+                              setBulkSubjects(updated);
+                            }}
+                          >
+                            <SelectTrigger className="rounded-lg h-9">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="9">Grade 9</SelectItem>
+                              <SelectItem value="10">Grade 10</SelectItem>
+                              <SelectItem value="11">Grade 11</SelectItem>
+                              <SelectItem value="12">Grade 12</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="col-span-2 space-y-1">
+                          <Label className="text-xs">Stream</Label>
+                          <Select
+                            value={subject.stream}
+                            onValueChange={v => {
+                              const updated = [...bulkSubjects];
+                              updated[index].stream = v;
+                              setBulkSubjects(updated);
+                            }}
+                          >
+                            <SelectTrigger className="rounded-lg h-9">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Common">Common</SelectItem>
+                              <SelectItem value="Science">Science</SelectItem>
+                              <SelectItem value="Arts">Arts</SelectItem>
+                              <SelectItem value="Commerce">Commerce</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="col-span-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              setBulkSubjects(bulkSubjects.filter((_, i) => i !== index));
+                            }}
+                            className="h-9 w-9 p-0 text-destructive hover:text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex gap-2 pt-2">
+                    <Button
+                      onClick={handleBulkCreateSubjects}
+                      className="gradient-primary border-0 text-white rounded-xl"
+                    >
+                      Create {bulkSubjects.filter(s => s.subject_name && s.subject_code).length} Subject{bulkSubjects.filter(s => s.subject_name && s.subject_code).length !== 1 ? 's' : ''}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setShowBulkSubjectForm(false);
+                        setBulkSubjects([]);
                       }}
                       className="rounded-xl"
                     >
