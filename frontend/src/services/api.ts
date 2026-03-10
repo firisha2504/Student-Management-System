@@ -108,7 +108,7 @@ export const api = {
     return apiRequest('/users');
   },
 
-  async createUser(data: { email: string; password: string; full_name: string; role: string; phone?: string; address?: string; gender?: string }) {
+  async createUser(data: { email: string; full_name: string; role: string; phone?: string; address?: string; gender?: string }) {
     return apiRequest('/users', {
       method: 'POST',
       body: JSON.stringify(data),

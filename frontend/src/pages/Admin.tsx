@@ -241,13 +241,10 @@ export default function Admin() {
       const randomSuffix = Math.floor(Math.random() * 100000);
       const nameHash = row.fullName.toLowerCase().replace(/\s+/g, '');
       const email = `${nameHash}.${timestamp}.${i}.${randomSuffix}@school.com`;
-      
-      const password = "pass" + row.idNumber.padStart(3, '0');
 
       try {
         const result = await api.createUser({
           email,
-          password,
           full_name: row.fullName.trim(),
           role: createRole,
           gender: row.gender || undefined
@@ -256,7 +253,7 @@ export default function Admin() {
         creds.push({ 
           name: row.fullName.trim(), 
           username: result.username, 
-          password 
+          password: result.credentials.password
         });
         
         // Delay between requests to ensure unique timestamps

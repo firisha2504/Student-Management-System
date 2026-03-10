@@ -164,12 +164,9 @@ export default function RegistrarPortal() {
       const nameHash = row.fullName.toLowerCase().replace(/\s+/g, '');
       const email = `${nameHash}.${timestamp}.${i}.${randomSuffix}@school.com`;
       
-      const password = "pass" + row.idNumber.padStart(3, '0');
-      
       try {
         const result = await api.createUser({
           email,
-          password,
           full_name: row.fullName.trim(),
           role: "student",
           gender: row.gender || undefined
@@ -178,7 +175,7 @@ export default function RegistrarPortal() {
         creds.push({ 
           name: row.fullName.trim(), 
           username: result.username, 
-          password 
+          password: result.credentials.password
         });
         
         // Delay between requests to ensure unique timestamps

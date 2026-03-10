@@ -39,7 +39,6 @@ router.get('/', authenticate, authorize('admin', 'registrar', 'director'), async
 // Create user (admin/registrar)
 router.post('/', authenticate, authorize('admin', 'registrar'), [
   body('email').isEmail().normalizeEmail(),
-  body('password').isLength({ min: 6 }),
   body('full_name').notEmpty().trim(),
   body('role').isIn(['student', 'teacher', 'admin', 'registrar', 'director', 'parent'])
 ], async (req, res) => {
@@ -51,14 +50,21 @@ router.post('/', authenticate, authorize('admin', 'registrar'), [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { email, password, full_name, role, phone, address } = req.body;
+    const { email, full_name, role, phone, address } = req.body;
 
     await connection.beginTransaction();
 
-    // Generate username based on role
-    const username = await generateUserId(role);
+    // Generate ID based on role (e.g., MJ001, MJT001)
+    const generatedId = await generateUserId(role);
     
-    // Check if username already exists (shouldn't happen with auto-generation, but safety check)
+    // Generate username as firstname.lastname.id
+    const nameParts = full_name.trim().toLowerCase().split(/\s+/);
+    const username = nameParts.join('.') + '.' + generatedId;
+    
+    // Generate password as pass + ID (e.g., passMJ001)
+    const password = 'pass' + generatedId;
+    
+    // Check if username already exists
     const [existingUser] = await connection.query(
       'SELECT id FROM users WHERE username = ?',
       [username]
@@ -92,7 +98,7 @@ router.post('/', authenticate, authorize('admin', 'registrar'), [
 
     // Create student_profiles record if role is student
     if (role === 'student') {
-      const admissionNumber = username.toUpperCase().replace(/\./g, '');
+      const admissionNumber = generatedId; // Use the generated ID (e.g., MJ001)
       const enrollmentDate = new Date().toISOString().split('T')[0];
       
       await connection.query(
