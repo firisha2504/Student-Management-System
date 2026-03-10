@@ -1248,7 +1248,6 @@ export default function Admin() {
                           <TableHead>Subject Name</TableHead>
                           <TableHead>Code</TableHead>
                           <TableHead className="text-center">Cr.Hr</TableHead>
-                          <TableHead className="text-center">ECTS</TableHead>
                           <TableHead>Grade</TableHead>
                           <TableHead>Stream</TableHead>
                           <TableHead>Teachers</TableHead>
@@ -1258,7 +1257,7 @@ export default function Admin() {
                       <TableBody>
                         {subjects.length === 0 ? (
                           <TableRow>
-                            <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                            <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                               No subjects found. Click "Add Subject" to create one.
                             </TableCell>
                           </TableRow>
@@ -1268,7 +1267,6 @@ export default function Admin() {
                               <TableCell className="font-medium">{subject.subject_name}</TableCell>
                               <TableCell className="font-mono text-sm">{subject.subject_code}</TableCell>
                               <TableCell className="text-center">{subject.credit_hours}</TableCell>
-                              <TableCell className="text-center">{subject.ects}</TableCell>
                               <TableCell>Grade {subject.grade_level || "All"}</TableCell>
                               <TableCell>
                                 <Badge variant="outline" className="rounded-full">
