@@ -117,6 +117,9 @@ export default function Admin() {
   const [showBulkSubjectForm, setShowBulkSubjectForm] = useState(false);
   const [bulkSubjects, setBulkSubjects] = useState<typeof subjectForm[]>([]);
   const [credFilterRole, setCredFilterRole] = useState("all");
+  const [deleteSubjectConfirmOpen, setDeleteSubjectConfirmOpen] = useState(false);
+  const [subjectToDelete, setSubjectToDelete] = useState<any>(null);
+  const [deletingSubject, setDeletingSubject] = useState(false);
 
   const showSuccess = (title: string, description?: string) => setSuccessModal({ title, description });
 
@@ -436,16 +439,24 @@ export default function Admin() {
     }
   };
 
-  const handleDeleteSubject = async (subjectId: number) => {
-    if (!confirm("Are you sure you want to delete this subject?")) return;
+  const confirmDeleteSubject = (subject: any) => {
+    setSubjectToDelete(subject);
+    setDeleteSubjectConfirmOpen(true);
+  };
 
+  const handleDeleteSubject = async () => {
+    if (!subjectToDelete) return;
+    setDeletingSubject(true);
     try {
-      await api.deleteSubject(subjectId);
-      showSuccess("Subject Deleted");
+      await api.deleteSubject(subjectToDelete.id);
+      showSuccess("Subject Deleted", `${subjectToDelete.subject_name} has been removed.`);
       fetchSubjects();
     } catch (error: any) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     }
+    setDeletingSubject(false);
+    setDeleteSubjectConfirmOpen(false);
+    setSubjectToDelete(null);
   };
 
   const startEditSubject = (subject: any) => {
@@ -1290,7 +1301,7 @@ export default function Admin() {
                                   <Button 
                                     variant="ghost" 
                                     size="icon"
-                                    onClick={() => handleDeleteSubject(subject.id)}
+                                    onClick={() => confirmDeleteSubject(subject)}
                                     className="h-8 w-8 rounded-lg text-destructive hover:bg-destructive/10"
                                   >
                                     <Trash2 className="h-4 w-4" />
@@ -1480,6 +1491,27 @@ export default function Admin() {
               className="bg-primary text-primary-foreground hover:bg-primary/90"
             >
               {promoting ? "Processing..." : "Run Promotion"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={deleteSubjectConfirmOpen} onOpenChange={setDeleteSubjectConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Subject</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to permanently delete <strong>{subjectToDelete?.subject_name}</strong>? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingSubject}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleDeleteSubject} 
+              disabled={deletingSubject} 
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deletingSubject ? "Deleting..." : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
