@@ -307,4 +307,95 @@ export const api = {
     
     return apiRequest(`/rankings/approval-status?${params.toString()}`);
   },
+
+  // Assessments
+  async getAssessmentTypes(filters: { subject_id: number; grade_level: number; stream?: string; section?: string; sub_section?: string }) {
+    const params = new URLSearchParams();
+    params.append('subject_id', filters.subject_id.toString());
+    params.append('grade_level', filters.grade_level.toString());
+    if (filters.stream) params.append('stream', filters.stream);
+    if (filters.section) params.append('section', filters.section);
+    if (filters.sub_section) params.append('sub_section', filters.sub_section);
+    
+    return apiRequest(`/assessments/types?${params.toString()}`);
+  },
+
+  async createAssessmentType(data: { subject_id: number; grade_level: number; stream?: string; section?: string; sub_section?: string; assessment_name: string; weight: number }) {
+    return apiRequest('/assessments/types', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async updateAssessmentType(typeId: number, data: { assessment_name?: string; weight?: number }) {
+    return apiRequest(`/assessments/types/${typeId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async deleteAssessmentType(typeId: number) {
+    return apiRequest(`/assessments/types/${typeId}`, {
+      method: 'DELETE',
+    });
+  },
+
+  async getAssessmentScores(filters?: { student_id?: number; assessment_type_id?: number; term?: string; academic_year?: string }) {
+    const params = new URLSearchParams();
+    if (filters?.student_id) params.append('student_id', filters.student_id.toString());
+    if (filters?.assessment_type_id) params.append('assessment_type_id', filters.assessment_type_id.toString());
+    if (filters?.term) params.append('term', filters.term);
+    if (filters?.academic_year) params.append('academic_year', filters.academic_year);
+    
+    return apiRequest(`/assessments/scores?${params.toString()}`);
+  },
+
+  async uploadAssessmentScore(data: { student_id: number; assessment_type_id: number; score: number; term: string; academic_year: string; remarks?: string; published?: boolean }) {
+    return apiRequest('/assessments/scores', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async bulkUploadAssessmentScores(data: { scores: { student_id: number; assessment_type_id: number; score: number; remarks?: string }[]; term: string; academic_year: string }) {
+    return apiRequest('/assessments/scores/bulk', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async deleteAssessmentScore(scoreId: number) {
+    return apiRequest(`/assessments/scores/${scoreId}`, {
+      method: 'DELETE',
+    });
+  },
+
+  // Academic Year
+  async archiveAcademicYear(academicYear: string) {
+    return apiRequest('/academic-year/archive', {
+      method: 'POST',
+      body: JSON.stringify({ academic_year: academicYear }),
+    });
+  },
+
+  async getAcademicHistory(studentId: number) {
+    return apiRequest(`/academic-year/history/${studentId}`);
+  },
+
+  async getArchivedYears() {
+    return apiRequest('/academic-year/archived-years');
+  },
+
+  async deleteArchivedYear(academicYear: string) {
+    return apiRequest(`/academic-year/archive/${academicYear}`, {
+      method: 'DELETE',
+    });
+  },
+
+  async promoteStudentsYearEnd(data: { current_year: string; next_year: string }) {
+    return apiRequest('/academic-year/promote', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
 };
