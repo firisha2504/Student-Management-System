@@ -169,6 +169,13 @@ export const api = {
     return apiRequest(`/students?${params.toString()}`);
   },
 
+  async updateStudent(studentId: string, data: { full_name?: string; phone?: string; address?: string; date_of_birth?: string; gender?: string; grade_level?: number; stream?: string; section?: string; sub_section?: string | null }) {
+    return apiRequest(`/students/${studentId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
   // Subjects
   async getAllSubjects(filters?: { grade_level?: number; stream?: string }) {
     const params = new URLSearchParams();
@@ -317,6 +324,15 @@ export const api = {
     return apiRequest(`/rankings/approval-status?${params.toString()}`);
   },
 
+  async getTop10Rankings(filters?: { term?: string; academic_year?: string }) {
+    const params = new URLSearchParams();
+    if (filters?.term) params.append('term', filters.term);
+    if (filters?.academic_year) params.append('academic_year', filters.academic_year);
+    
+    const queryString = params.toString();
+    return apiRequest(`/rankings/top10${queryString ? '?' + queryString : ''}`);
+  },
+
   // Assessments
   async getAssessmentTypes(filters: { subject_id: number; grade_level: number; stream?: string; section?: string; sub_section?: string }) {
     const params = new URLSearchParams();
@@ -408,6 +424,29 @@ export const api = {
     });
   },
 
+  // Parents
+  async getAllParents() {
+    return apiRequest('/parents');
+  },
+
+  async getLinkedParents(studentId: string) {
+    return apiRequest(`/parents/student/${studentId}`);
+  },
+
+  async linkParentToStudent(data: { parent_id: number; student_id: number; relationship?: string }) {
+    return apiRequest('/parents/link', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async unlinkParentFromStudent(data: { parent_id: number; student_id: number }) {
+    return apiRequest('/parents/unlink', {
+      method: 'DELETE',
+      body: JSON.stringify(data),
+    });
+  },
+
   // Teacher Assignments
   async getTeacherAssignments(teacherId: number) {
     return apiRequest(`/teacher-assignments/${teacherId}`);
@@ -421,6 +460,44 @@ export const api = {
     return apiRequest(`/teacher-assignments/${teacherId}`, {
       method: 'POST',
       body: JSON.stringify(data),
+    });
+  },
+
+  // Teacher Requests
+  async submitTeacherRequest(data: { 
+    full_name: string; 
+    email: string; 
+    phone?: string; 
+    subject_specialization?: string; 
+    qualifications?: string; 
+    experience_years?: number 
+  }) {
+    return apiRequest('/teacher-requests/submit', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async getTeacherRequests(status?: string) {
+    const params = status ? `?status=${status}` : '';
+    return apiRequest(`/teacher-requests${params}`);
+  },
+
+  async approveTeacherRequest(requestId: number) {
+    return apiRequest(`/teacher-requests/${requestId}/approve`, {
+      method: 'POST',
+    });
+  },
+
+  async rejectTeacherRequest(requestId: number) {
+    return apiRequest(`/teacher-requests/${requestId}/reject`, {
+      method: 'POST',
+    });
+  },
+
+  async deleteTeacherRequest(requestId: number) {
+    return apiRequest(`/teacher-requests/${requestId}`, {
+      method: 'DELETE',
     });
   },
 };

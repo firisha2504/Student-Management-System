@@ -13,13 +13,16 @@ router.get('/', authenticate, authorize('admin', 'registrar', 'director'), async
     const [users] = await pool.query(`
       SELECT 
         u.id as user_id, u.username, u.email, u.created_at,
-        p.full_name, p.phone, p.is_active,
+        p.full_name, p.phone, p.is_active, p.gender, p.profile_image,
         r.role,
-        sp.grade_level, sp.stream
+        sp.grade_level, sp.stream, sp.section, sp.sub_section,
+        COUNT(DISTINCT ps.parent_id) as parent_count
       FROM users u
       LEFT JOIN profiles p ON u.id = p.user_id
       LEFT JOIN user_roles r ON u.id = r.user_id
       LEFT JOIN student_profiles sp ON u.id = sp.user_id
+      LEFT JOIN parent_students ps ON u.id = ps.student_id
+      GROUP BY u.id, u.username, u.email, u.created_at, p.full_name, p.phone, p.is_active, p.gender, p.profile_image, r.role, sp.grade_level, sp.stream, sp.section, sp.sub_section
       ORDER BY u.created_at DESC
     `);
 

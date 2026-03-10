@@ -41,27 +41,31 @@ router.post('/archive', authenticate, authorize('registrar', 'admin'), [
         p.full_name
       FROM student_profiles sp
       INNER JOIN profiles p ON sp.user_id = p.user_id
-      WHERE p.is_active = TRUE
+      WHERE p.is_active = TRUE AND sp.grade_level IS NOT NULL
     `);
+
+    console.log(`Found ${students.length} active students with grade levels`);
 
     let archived_students = 0;
     let archived_subjects = 0;
 
     for (const student of students) {
+      console.log(`Processing student: ${student.full_name} (Grade ${student.grade_level})`);
+      
       // Get all subjects with complete assessments for this student
       const [subjectScores] = await connection.query(`
         SELECT 
           at.subject_id,
           s.subject_name,
           COUNT(DISTINCT at.id) as total_assessments,
-          COUNT(DISTINCT asc.id) as completed_assessments,
-          SUM(asc.score * at.weight / 100) as weighted_score
+          COUNT(DISTINCT ascore.id) as completed_assessments,
+          SUM(ascore.score * at.weight / 100) as weighted_score
         FROM assessment_types at
         INNER JOIN subjects s ON at.subject_id = s.id
-        LEFT JOIN assessment_scores asc ON at.id = asc.assessment_type_id 
-          AND asc.student_id = ? 
-          AND asc.academic_year = ?
-          AND asc.published = TRUE
+        LEFT JOIN assessment_scores ascore ON at.id = ascore.assessment_type_id 
+          AND ascore.student_id = ? 
+          AND ascore.academic_year = ?
+          AND ascore.published = TRUE
         WHERE at.grade_level = ?
           AND (at.stream IS NULL OR at.stream = ? OR ? IS NULL)
           AND (at.sub_section IS NULL OR at.sub_section = ? OR ? IS NULL)
@@ -76,6 +80,8 @@ router.post('/archive', authenticate, authorize('registrar', 'admin'), [
         student.sub_section,
         student.sub_section
       ]);
+
+      console.log(`  Found ${subjectScores.length} subjects with complete assessments`);
 
       if (subjectScores.length > 0) {
         let student_total = 0;

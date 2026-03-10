@@ -13,6 +13,9 @@ import registrationRoutes from './routes/registration.js';
 import rankingsRoutes from './routes/rankings.js';
 import assessmentsRoutes from './routes/assessments.js';
 import teacherAssignmentsRoutes from './routes/teacher-assignments.js';
+import academicYearRoutes from './routes/academic-year.js';
+import parentsRoutes from './routes/parents.js';
+import teacherRequestsRoutes from './routes/teacher-requests.js';
 
 dotenv.config();
 
@@ -42,6 +45,9 @@ app.use('/api/registration', registrationRoutes);
 app.use('/api/rankings', rankingsRoutes);
 app.use('/api/assessments', assessmentsRoutes);
 app.use('/api/teacher-assignments', teacherAssignmentsRoutes);
+app.use('/api/academic-year', academicYearRoutes);
+app.use('/api/parents', parentsRoutes);
+app.use('/api/teacher-requests', teacherRequestsRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

@@ -1,21 +1,13 @@
 import { useState } from "react";
-// Supabase removed - replace with your backend API
+import { api } from "@/services/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { GraduationCap, Send, CheckCircle2, Sun, Moon } from "lucide-react";
 import { useTheme } from "@/hooks/useTheme";
-
-const GRADE_OPTIONS = [9, 10, 11, 12];
-const COMMON_SUBJECTS = [
-  "Mathematics", "Physics", "Chemistry", "Biology",
-  "English", "Amharic", "Afan Oromo", "History",
-  "Geography", "Civics", "Economics", "ICT",
-  "HPE", "Art",
-];
 
 export default function TeacherRequest() {
   const { toast } = useToast();
@@ -23,27 +15,11 @@ export default function TeacherRequest() {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [selectedGrades, setSelectedGrades] = useState<number[]>([]);
-  const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
-  const [customSubject, setCustomSubject] = useState("");
+  const [subjectSpecialization, setSubjectSpecialization] = useState("");
+  const [qualifications, setQualifications] = useState("");
+  const [experienceYears, setExperienceYears] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-
-  const toggleGrade = (g: number) => {
-    setSelectedGrades(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g]);
-  };
-
-  const toggleSubject = (s: string) => {
-    setSelectedSubjects(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
-  };
-
-  const addCustomSubject = () => {
-    const trimmed = customSubject.trim();
-    if (trimmed && !selectedSubjects.includes(trimmed)) {
-      setSelectedSubjects(prev => [...prev, trimmed]);
-      setCustomSubject("");
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,31 +32,24 @@ export default function TeacherRequest() {
       toast({ title: "Error", description: "Please enter a valid email address.", variant: "destructive" });
       return;
     }
-    if (selectedGrades.length === 0) {
-      toast({ title: "Error", description: "Please select at least one grade level.", variant: "destructive" });
-      return;
-    }
-    if (selectedSubjects.length === 0) {
-      toast({ title: "Error", description: "Please select at least one subject.", variant: "destructive" });
-      return;
-    }
 
     setSubmitting(true);
 
-    const { error } = await supabase.from("teacher_requests" as any).insert({
-      full_name: fullName.trim(),
-      email: email.trim().toLowerCase(),
-      phone: phone.trim() || null,
-      subject_names: selectedSubjects,
-      grade_levels: selectedGrades.sort((a, b) => a - b),
-      status: "pending",
-    } as any);
+    try {
+      await api.submitTeacherRequest({
+        full_name: fullName.trim(),
+        email: email.trim().toLowerCase(),
+        phone: phone.trim() || undefined,
+        subject_specialization: subjectSpecialization.trim() || undefined,
+        qualifications: qualifications.trim() || undefined,
+        experience_years: experienceYears ? parseInt(experienceYears) : undefined,
+      });
 
-    if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    } else {
       setSubmitted(true);
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to submit request", variant: "destructive" });
     }
+    
     setSubmitting(false);
   };
 
@@ -95,7 +64,7 @@ export default function TeacherRequest() {
             <h2 className="text-2xl font-bold text-foreground">Request Submitted!</h2>
             <p className="text-muted-foreground leading-relaxed text-sm">
               Thank you, <span className="font-semibold text-foreground">{fullName}</span>. Your teacher registration request has been submitted. 
-              The admin will review your request and send your login credentials to <span className="font-semibold text-foreground">{email}</span>.
+              The admin will review your request and send your login credentials to <span className="font-semibold text-foreground">{email}</span> if approved.
             </p>
             <Button
               onClick={() => window.location.href = "/login"}
@@ -145,7 +114,7 @@ export default function TeacherRequest() {
                     onChange={(e) => setFullName(e.target.value)}
                     placeholder="Enter your full name"
                     className="h-11 rounded-xl bg-muted/50"
-                    maxLength={100}
+                    maxLength={255}
                   />
                 </div>
                 <div className="space-y-2">
@@ -158,7 +127,7 @@ export default function TeacherRequest() {
                     className="h-11 rounded-xl bg-muted/50"
                     maxLength={255}
                   />
-                  <p className="text-xs text-muted-foreground">Your login credentials will be sent to this email</p>
+                  <p className="text-xs text-muted-foreground">Your login credentials will be sent to this email if approved</p>
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold">Phone (Optional)</Label>
@@ -172,54 +141,41 @@ export default function TeacherRequest() {
                 </div>
               </div>
 
-              {/* Grade Levels */}
-              <div className="space-y-3">
-                <Label className="text-sm font-semibold">Grade Levels You Can Teach *</Label>
-                <div className="grid grid-cols-4 gap-2">
-                  {GRADE_OPTIONS.map(g => (
-                    <label key={g} className="flex items-center gap-2 p-2.5 rounded-xl border hover:bg-muted/50 cursor-pointer transition-colors">
-                      <Checkbox
-                        checked={selectedGrades.includes(g)}
-                        onCheckedChange={() => toggleGrade(g)}
-                      />
-                      <span className="text-sm font-medium">Grade {g}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              {/* Subjects */}
-              <div className="space-y-3">
-                <Label className="text-sm font-semibold">Subjects You Can Teach *</Label>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {COMMON_SUBJECTS.map(s => (
-                    <label key={s} className="flex items-center gap-2 p-2 rounded-xl hover:bg-muted/50 cursor-pointer transition-colors">
-                      <Checkbox
-                        checked={selectedSubjects.includes(s)}
-                        onCheckedChange={() => toggleSubject(s)}
-                      />
-                      <span className="text-sm">{s}</span>
-                    </label>
-                  ))}
-                </div>
-                <div className="flex gap-2">
+              {/* Professional Info */}
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Subject Specialization (Optional)</Label>
                   <Input
-                    value={customSubject}
-                    onChange={(e) => setCustomSubject(e.target.value)}
-                    placeholder="Add other subject..."
-                    className="rounded-xl"
-                    onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addCustomSubject())}
+                    value={subjectSpecialization}
+                    onChange={(e) => setSubjectSpecialization(e.target.value)}
+                    placeholder="e.g., Mathematics, Physics, English"
+                    className="h-11 rounded-xl bg-muted/50"
+                    maxLength={100}
                   />
-                  <Button type="button" variant="outline" className="rounded-xl shrink-0" onClick={addCustomSubject}>
-                    Add
-                  </Button>
                 </div>
-                {selectedSubjects.filter(s => !COMMON_SUBJECTS.includes(s)).map(s => (
-                  <span key={s} className="inline-flex items-center gap-1 bg-primary/10 text-primary text-xs font-medium px-2.5 py-1 rounded-full mr-1">
-                    {s}
-                    <button type="button" onClick={() => toggleSubject(s)} className="ml-1 text-primary/60 hover:text-primary">✕</button>
-                  </span>
-                ))}
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Years of Experience (Optional)</Label>
+                  <Input
+                    type="number"
+                    value={experienceYears}
+                    onChange={(e) => setExperienceYears(e.target.value)}
+                    placeholder="e.g., 5"
+                    className="h-11 rounded-xl bg-muted/50"
+                    min="0"
+                    max="50"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Qualifications (Optional)</Label>
+                  <Textarea
+                    value={qualifications}
+                    onChange={(e) => setQualifications(e.target.value)}
+                    placeholder="Describe your educational background, certifications, and relevant qualifications..."
+                    className="rounded-xl bg-muted/50 min-h-[100px]"
+                    maxLength={500}
+                  />
+                  <p className="text-xs text-muted-foreground">{qualifications.length}/500 characters</p>
+                </div>
               </div>
 
               <Button

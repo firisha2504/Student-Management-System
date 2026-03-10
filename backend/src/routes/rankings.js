@@ -204,4 +204,115 @@ router.get('/approval-status', authenticate, async (req, res) => {
   }
 });
 
+// Get top 10 students across all grades (director only)
+router.get('/top10', authenticate, authorize('director'), async (req, res) => {
+  try {
+    const { term, academic_year } = req.query;
+    
+    // Get current term and academic year if not provided
+    const [settings] = await pool.query(
+      "SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ('current_term', 'current_academic_year')"
+    );
+    const currentTerm = term || settings.find(s => s.setting_key === 'current_term')?.setting_value || 'Term 1';
+    const currentYear = academic_year || settings.find(s => s.setting_key === 'current_academic_year')?.setting_value || '2024-2025';
+    
+    // Build query to calculate top 10 rankings across all grades
+    const query = `
+      SELECT 
+        u.id as user_id,
+        p.full_name,
+        sp.grade_level,
+        sp.stream,
+        sp.section,
+        AVG(g.score) as average_score,
+        COUNT(g.id) as total_subjects
+      FROM users u
+      INNER JOIN profiles p ON u.id = p.user_id
+      INNER JOIN student_profiles sp ON u.id = sp.user_id
+      INNER JOIN grades g ON u.id = g.student_id
+      WHERE sp.grade_level IN (9, 10, 11, 12)
+      AND g.term = ?
+      AND g.academic_year = ?
+      GROUP BY u.id, p.full_name, sp.grade_level, sp.stream, sp.section
+      HAVING COUNT(g.id) > 0
+      ORDER BY average_score DESC
+      LIMIT 10
+    `;
+    
+    const [students] = await pool.query(query, [currentTerm, currentYear]);
+    
+    // Add rank to each student
+    const rankings = students.map((student, index) => ({
+      user_id: student.user_id,
+      full_name: student.full_name,
+      grade_level: student.grade_level,
+      stream: student.stream,
+      section: student.section,
+      average: Math.round(student.average_score * 100) / 100,
+      rank: index + 1
+    }));
+    
+    res.json({ rankings });
+    
+  } catch (error) {
+    console.error('Get top 10 rankings error:', error);
+    res.status(500).json({ error: 'Failed to fetch top 10 rankings' });
+  }
+});
+
 export default router;
+// Get top 10 students across all grades (director only)
+router.get('/top10', authenticate, authorize('director'), async (req, res) => {
+  try {
+    const { term, academic_year } = req.query;
+
+    // Get current term and academic year if not provided
+    const [settings] = await pool.query(
+      "SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ('current_term', 'current_academic_year')"
+    );
+    const currentTerm = term || settings.find(s => s.setting_key === 'current_term')?.setting_value || 'Term 1';
+    const currentYear = academic_year || settings.find(s => s.setting_key === 'current_academic_year')?.setting_value || '2024-2025';
+
+    // Build query to calculate top 10 rankings across all grades
+    const query = `
+      SELECT
+        u.id as user_id,
+        p.full_name,
+        sp.grade_level,
+        sp.stream,
+        sp.section,
+        AVG(g.score) as average_score,
+        COUNT(g.id) as total_subjects
+      FROM users u
+      INNER JOIN profiles p ON u.id = p.user_id
+      INNER JOIN student_profiles sp ON u.id = sp.user_id
+      INNER JOIN grades g ON u.id = g.student_id
+      WHERE sp.grade_level IN (9, 10, 11, 12)
+      AND g.term = ?
+      AND g.academic_year = ?
+      GROUP BY u.id, p.full_name, sp.grade_level, sp.stream, sp.section
+      HAVING COUNT(g.id) > 0
+      ORDER BY average_score DESC
+      LIMIT 10
+    `;
+
+    const [students] = await pool.query(query, [currentTerm, currentYear]);
+
+    // Add rank to each student
+    const rankings = students.map((student, index) => ({
+      user_id: student.user_id,
+      full_name: student.full_name,
+      grade_level: student.grade_level,
+      stream: student.stream,
+      section: student.section,
+      average: Math.round(student.average_score * 100) / 100,
+      rank: index + 1
+    }));
+
+    res.json({ rankings });
+
+  } catch (error) {
+    console.error('Get top 10 rankings error:', error);
+    res.status(500).json({ error: 'Failed to fetch top 10 rankings' });
+  }
+});

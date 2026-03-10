@@ -82,42 +82,35 @@ router.get('/:id', authenticate, async (req, res) => {
 });
 
 // Update student profile
-router.put('/:id', authenticate, [
-  body('full_name').optional().trim(),
-  body('grade_level').optional().isInt({ min: 1, max: 12 }),
-  body('stream').optional().isIn(['Science', 'Arts', 'Commerce'])
-], async (req, res) => {
+router.put('/:id', authenticate, authorize('admin', 'registrar', 'director'), async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
     const { id } = req.params;
-    const { full_name, phone, address, date_of_birth, gender, grade_level, stream } = req.body;
+    const { full_name, phone, address, date_of_birth, gender, grade_level, stream, section, sub_section } = req.body;
+
+    console.log('Updating student:', id, 'with data:', { full_name, phone, address, date_of_birth, gender, grade_level, stream, section, sub_section });
 
     // Update profile
-    if (full_name || phone || address || date_of_birth || gender) {
+    if (full_name !== undefined || phone !== undefined || address !== undefined || date_of_birth !== undefined || gender !== undefined) {
       const profileUpdates = [];
       const profileValues = [];
       
-      if (full_name) {
+      if (full_name !== undefined) {
         profileUpdates.push('full_name = ?');
         profileValues.push(full_name);
       }
-      if (phone) {
+      if (phone !== undefined) {
         profileUpdates.push('phone = ?');
         profileValues.push(phone);
       }
-      if (address) {
+      if (address !== undefined) {
         profileUpdates.push('address = ?');
         profileValues.push(address);
       }
-      if (date_of_birth) {
+      if (date_of_birth !== undefined) {
         profileUpdates.push('date_of_birth = ?');
         profileValues.push(date_of_birth);
       }
-      if (gender) {
+      if (gender !== undefined) {
         profileUpdates.push('gender = ?');
         profileValues.push(gender);
       }
@@ -132,17 +125,25 @@ router.put('/:id', authenticate, [
     }
 
     // Update student profile
-    if (grade_level || stream) {
+    if (grade_level !== undefined || stream !== undefined || section !== undefined || sub_section !== undefined) {
       const studentUpdates = [];
       const studentValues = [];
       
-      if (grade_level) {
+      if (grade_level !== undefined) {
         studentUpdates.push('grade_level = ?');
         studentValues.push(grade_level);
       }
-      if (stream) {
+      if (stream !== undefined) {
         studentUpdates.push('stream = ?');
         studentValues.push(stream);
+      }
+      if (section !== undefined) {
+        studentUpdates.push('section = ?');
+        studentValues.push(section);
+      }
+      if (sub_section !== undefined) {
+        studentUpdates.push('sub_section = ?');
+        studentValues.push(sub_section);
       }
       
       if (studentUpdates.length > 0) {

@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { UserPlus, Users, Search, Camera, Link2, History, Menu, ChevronLeft, ChevronRight, ClipboardList, CheckSquare } from "lucide-react";
+import { UserPlus, Users, Search, Camera, Link2, History, Menu, ChevronLeft, ChevronRight, ClipboardList, CheckSquare, Trash2 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import SuccessModal from "@/components/SuccessModal";
@@ -28,6 +28,7 @@ interface StudentProfile {
   is_active: boolean;
   profile_image: string | null;
   gender: string | null;
+  parent_count: number;
 }
 
 type RegistrarSection = "students" | "register" | "academic";
@@ -69,17 +70,19 @@ export default function RegistrarPortal() {
   const [linkStudent, setLinkStudent] = useState<StudentProfile | null>(null);
   const [parents, setParents] = useState<{ user_id: string; full_name: string }[]>([]);
   const [linkedParents, setLinkedParents] = useState<{ parent_id: string; full_name: string }[]>([]);
-  const [parentMap, setParentMap] = useState<Record<string, string[]>>({});
 
   // Image upload
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [uploadingImage, setUploadingImage] = useState(false);
   const [imageTargetStudent, setImageTargetStudent] = useState<string | null>(null);
 
   // Academic year management
   const [archiveYear, setArchiveYear] = useState("");
   const [archiving, setArchiving] = useState(false);
   const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false);
+  const [archivedYears, setArchivedYears] = useState<any[]>([]);
+  const [loadingArchived, setLoadingArchived] = useState(false);
+  const [deleteYearConfirm, setDeleteYearConfirm] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   // Bulk sub-section assignment
   const [selectedStudents, setSelectedStudents] = useState<Set<string>>(new Set());
@@ -90,14 +93,50 @@ export default function RegistrarPortal() {
     setArchiving(true);
     setArchiveConfirmOpen(false);
     try {
-      // TODO: Implement archive endpoint in backend
-      toast({ title: "Coming Soon", description: "Academic year archiving will be available soon" });
+      // Convert format from 2025/2026 to 2025-2026
+      const formattedYear = archiveYear.replace('/', '-');
+      const result = await api.archiveAcademicYear(formattedYear);
+      toast({ 
+        title: "Success", 
+        description: `Archived ${result.archived_students} student(s) with ${result.archived_subjects} subject(s)` 
+      });
       setArchiveYear("");
+      fetchArchivedYears(); // Refresh the list
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     }
     setArchiving(false);
   };
+
+  const fetchArchivedYears = async () => {
+    setLoadingArchived(true);
+    try {
+      const data = await api.getArchivedYears();
+      setArchivedYears(data || []);
+    } catch (error: any) {
+      console.error('Failed to fetch archived years:', error);
+    }
+    setLoadingArchived(false);
+  };
+
+  const handleDeleteYear = async (academicYear: string) => {
+    setDeleting(true);
+    setDeleteYearConfirm(null);
+    try {
+      await api.deleteArchivedYear(academicYear);
+      toast({ title: "Success", description: "Archived year deleted successfully" });
+      fetchArchivedYears(); // Refresh the list
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+    setDeleting(false);
+  };
+
+  useEffect(() => {
+    if (activeSection === 'academic') {
+      fetchArchivedYears();
+    }
+  }, [activeSection]);
 
   const fetchStudents = async () => {
     setLoading(true);
@@ -119,9 +158,6 @@ export default function RegistrarPortal() {
           gender: u.gender,
         }));
       setStudents(studentProfiles);
-
-      // TODO: Fetch parent-student links from backend
-      setParentMap({});
     } catch (error: any) {
       toast({ title: "Error", description: error.message || "Failed to fetch students", variant: "destructive" });
     }
@@ -223,9 +259,10 @@ export default function RegistrarPortal() {
     if (editGender) updates.gender = editGender;
     
     try {
-      // TODO: Implement update student profile endpoint
-      toast({ title: "Coming Soon", description: "Student profile update will be available soon" });
+      await api.updateStudent(editStudent.user_id, updates);
+      toast({ title: "Success", description: "Student profile updated successfully" });
       setEditStudent(null);
+      fetchStudents(); // Refresh the list
     } catch (error: any) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     }
@@ -239,7 +276,6 @@ export default function RegistrarPortal() {
       toast({ title: "Error", description: "Image must be under 2MB.", variant: "destructive" }); 
       return; 
     }
-    setUploadingImage(true);
     
     try {
       await api.uploadProfileImage(file);
@@ -249,8 +285,16 @@ export default function RegistrarPortal() {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     }
     
-    setUploadingImage(false); 
     setImageTargetStudent(null);
+  };
+
+  const fetchLinkedParents = async (studentId: string) => {
+    try {
+      const linked = await api.getLinkedParents(studentId);
+      setLinkedParents(linked.map((p: any) => ({ parent_id: p.parent_id, full_name: p.full_name })));
+    } catch (error: any) {
+      console.error('Failed to fetch linked parents:', error);
+    }
   };
 
   const openLinkDialog = async (student: StudentProfile) => {
@@ -262,8 +306,7 @@ export default function RegistrarPortal() {
       const parentProfiles = allUsers.filter((u: any) => u.role === "parent");
       setParents(parentProfiles.map((p: any) => ({ user_id: p.user_id, full_name: p.full_name })));
       
-      // TODO: Fetch linked parents for this student
-      setLinkedParents([]);
+      await fetchLinkedParents(student.user_id);
     } catch (error: any) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     }
@@ -273,8 +316,13 @@ export default function RegistrarPortal() {
     if (!linkStudent) return;
     
     try {
-      // TODO: Implement parent-student linking endpoint
-      toast({ title: "Coming Soon", description: "Parent linking will be available soon" });
+      await api.linkParentToStudent({
+        parent_id: parseInt(parentId),
+        student_id: parseInt(linkStudent.user_id),
+        relationship: 'parent'
+      });
+      toast({ title: "Success", description: "Parent linked successfully" });
+      await fetchLinkedParents(linkStudent.user_id);
     } catch (error: any) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     }
@@ -284,8 +332,12 @@ export default function RegistrarPortal() {
     if (!linkStudent) return;
     
     try {
-      // TODO: Implement parent-student unlinking endpoint
-      toast({ title: "Coming Soon", description: "Parent unlinking will be available soon" });
+      await api.unlinkParentFromStudent({
+        parent_id: parseInt(parentId),
+        student_id: parseInt(linkStudent.user_id)
+      });
+      toast({ title: "Success", description: "Parent unlinked successfully" });
+      await fetchLinkedParents(linkStudent.user_id);
     } catch (error: any) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     }
@@ -317,10 +369,23 @@ export default function RegistrarPortal() {
     setBulkAssigning(true);
     
     try {
-      // TODO: Implement bulk update endpoint
-      toast({ title: "Coming Soon", description: "Bulk sub-section assignment will be available soon" });
+      // Update each selected student
+      const updatePromises = Array.from(selectedStudents).map(studentId => 
+        api.updateStudent(studentId, { 
+          sub_section: bulkSubSection === "none" ? null : bulkSubSection 
+        })
+      );
+      
+      await Promise.all(updatePromises);
+      
+      toast({ 
+        title: "Success", 
+        description: `Updated ${selectedStudents.size} student(s)` 
+      });
+      
       setSelectedStudents(new Set());
       setBulkSubSection("");
+      fetchStudents(); // Refresh the list
     } catch (error: any) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     }
@@ -420,12 +485,13 @@ export default function RegistrarPortal() {
                             <TableCell className="capitalize">{s.section || "—"}</TableCell>
                             <TableCell className="uppercase font-semibold">{s.sub_section || "—"}</TableCell>
                             <TableCell className="text-sm">
-                              {parentMap[s.user_id]?.length > 0
-                                ? <div className="flex items-center gap-2">
-                                    <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-xs">Linked</Badge>
-                                    <span>{parentMap[s.user_id].join(", ")}</span>
-                                  </div>
-                                : <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30 text-xs">No Parent</Badge>}
+                              {s.parent_count > 0
+                                ? <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-xs">
+                                    Parent ({s.parent_count})
+                                  </Badge>
+                                : <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30 text-xs">
+                                    No Parent
+                                  </Badge>}
                             </TableCell>
                             <TableCell>
                               <div className="flex gap-2">
@@ -519,6 +585,43 @@ export default function RegistrarPortal() {
                 >
                   <History className="h-4 w-4 mr-2" />{archiving ? "Archiving..." : "Archive Academic Year"}
                 </Button>
+              </CardContent>
+            </Card>
+
+            {/* Archived Years List */}
+            <Card className="border-0 shadow-sm mt-6">
+              <CardContent className="pt-6">
+                <h3 className="font-semibold mb-4">Archived Academic Years</h3>
+                {loadingArchived ? (
+                  <p className="text-sm text-muted-foreground">Loading...</p>
+                ) : archivedYears.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No archived years yet</p>
+                ) : (
+                  <div className="space-y-2">
+                    {archivedYears.map((year) => (
+                      <div key={year.academic_year} className="flex items-center justify-between p-3 rounded-lg border">
+                        <div>
+                          <p className="font-medium">{year.academic_year.replace('-', '/')}</p>
+                          <p className="text-sm text-muted-foreground">{year.student_count} student(s) archived</p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <div className="text-xs text-muted-foreground">
+                            {new Date(year.archived_at).toLocaleDateString()}
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                            onClick={() => setDeleteYearConfirm(year.academic_year)}
+                            disabled={deleting}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -713,6 +816,27 @@ export default function RegistrarPortal() {
             <AlertDialogCancel disabled={archiving}>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleArchiveYear} disabled={archiving} className="bg-primary text-primary-foreground hover:bg-primary/90">
               {archiving ? "Archiving..." : "Archive Year"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!deleteYearConfirm} onOpenChange={() => setDeleteYearConfirm(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Archived Year</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete the archived data for <strong>{deleteYearConfirm?.replace('-', '/')}</strong>? This will permanently remove all archived student results for this year. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={() => deleteYearConfirm && handleDeleteYear(deleteYearConfirm)} 
+              disabled={deleting} 
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? "Deleting..." : "Delete Year"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

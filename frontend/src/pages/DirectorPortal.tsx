@@ -180,11 +180,10 @@ export default function DirectorPortal() {
   const fetchTop10 = async () => {
     setLoadingTop10(true);
     try {
-      // TODO: Implement top 10 rankings endpoint in backend
-      toast({ title: "Coming Soon", description: "Top 10 rankings feature will be available soon" });
-      setTop10Rankings([]);
+      const data = await api.getTop10Rankings();
+      setTop10Rankings(data.rankings || []);
     } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+      toast({ title: "Error", description: err.message || "Failed to fetch top 10 rankings", variant: "destructive" });
     }
     setLoadingTop10(false);
   };
