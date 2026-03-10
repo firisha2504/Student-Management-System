@@ -93,7 +93,8 @@ router.get('/me', authenticate, async (req, res) => {
         p.*,
         u.username,
         sp.grade_level,
-        sp.stream
+        sp.stream,
+        sp.section
       FROM profiles p
       INNER JOIN users u ON p.user_id = u.id
       LEFT JOIN student_profiles sp ON p.user_id = sp.user_id

@@ -87,8 +87,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = async () => {
     try {
       await api.logout();
-    } catch (error) {
-      console.error('Logout error:', error);
+    } catch (error: any) {
+      // Silently ignore 401 errors (token already expired)
+      if (error.message !== 'Authentication required') {
+        console.error('Logout error:', error);
+      }
     }
     setUser(null);
     setProfile(null);

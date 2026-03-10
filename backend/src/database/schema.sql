@@ -79,7 +79,7 @@ CREATE TABLE student_profiles (
   id INT PRIMARY KEY AUTO_INCREMENT,
   user_id INT UNIQUE NOT NULL,
   admission_number VARCHAR(50) UNIQUE NOT NULL,
-  grade_level INT NOT NULL,
+  grade_level INT,
   stream ENUM('Science', 'Arts', 'Commerce'),
   section ENUM('oromo', 'amharic', 'somali'),
   sub_section VARCHAR(10),

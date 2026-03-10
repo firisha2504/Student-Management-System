@@ -5,37 +5,42 @@ import { authenticate, authorize } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// Get assessment types for a teacher's subject
-router.get('/types', authenticate, authorize('teacher', 'admin'), async (req, res) => {
+// Get assessment types for a subject
+router.get('/types', authenticate, authorize('teacher', 'admin', 'student'), async (req, res) => {
   try {
     const { subject_id, grade_level, stream, section, sub_section } = req.query;
-    const teacher_id = req.userId;
+    const userRole = req.userRole;
+    const userId = req.userId;
 
     let query = `
-      SELECT * FROM assessment_types 
-      WHERE teacher_id = ? AND subject_id = ? AND grade_level = ?
+      SELECT 
+        at.*,
+        p.full_name as teacher_name
+      FROM assessment_types at
+      LEFT JOIN profiles p ON at.teacher_id = p.user_id
+      WHERE at.subject_id = ? AND at.grade_level = ?
     `;
-    const params = [teacher_id, subject_id, grade_level];
+    const params = [subject_id, grade_level];
+
+    // If teacher, only show their own assessment types
+    if (userRole === 'teacher') {
+      query += ' AND at.teacher_id = ?';
+      params.push(userId);
+    }
 
     if (stream) {
-      query += ' AND stream = ?';
+      query += ' AND (at.stream = ? OR at.stream IS NULL)';
       params.push(stream);
-    } else {
-      query += ' AND stream IS NULL';
     }
 
     if (section) {
-      query += ' AND section = ?';
+      query += ' AND (at.section = ? OR at.section IS NULL)';
       params.push(section);
-    } else {
-      query += ' AND section IS NULL';
     }
 
     if (sub_section) {
-      query += ' AND sub_section = ?';
+      query += ' AND (at.sub_section = ? OR at.sub_section IS NULL)';
       params.push(sub_section);
-    } else {
-      query += ' AND sub_section IS NULL';
     }
 
     const [types] = await pool.query(query, params);

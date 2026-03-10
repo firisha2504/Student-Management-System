@@ -93,6 +93,20 @@ export default function Register() {
 
   return (
     <div className="max-w-lg mx-auto space-y-6">
+      {/* Instructions for new students */}
+      {!hasGradeSet && (
+        <div className="flex items-start gap-3 rounded-xl bg-primary/10 p-4 border border-primary/20">
+          <Info className="h-5 w-5 text-primary mt-0.5 shrink-0" />
+          <div className="space-y-1">
+            <p className="text-sm font-semibold text-primary">Welcome! Complete Your Profile</p>
+            <p className="text-sm text-muted-foreground">
+              Please select your grade level, stream (for grades 11-12), and section below. 
+              Once saved, your grade and stream cannot be changed.
+            </p>
+          </div>
+        </div>
+      )}
+      
       {/* Grade Selection - locked after first save */}
       <Card className="border-0 shadow-md">
         <CardHeader>
@@ -169,10 +183,10 @@ export default function Register() {
                 <div className="space-y-2">
                   <Label>Stream <span className="text-destructive">*</span></Label>
                   <Select value={stream} onValueChange={setStream}>
-                    <SelectTrigger><SelectValue placeholder="Select stream" /></SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder="Select your stream" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Science">Natural Science</SelectItem>
-                      <SelectItem value="Arts">Social Science</SelectItem>
+                      <SelectItem value="Natural Science">Natural Science</SelectItem>
+                      <SelectItem value="Social Science">Social Science</SelectItem>
                     </SelectContent>
                   </Select>
                   <div className="flex items-start gap-2 rounded-xl bg-warning/10 p-3">
@@ -217,9 +231,9 @@ export default function Register() {
           ) : (
             <>
               <div className="space-y-2">
-                <Label>Grade Level</Label>
+                <Label>Grade Level <span className="text-destructive">*</span></Label>
                 <Select value={gradeLevel} onValueChange={(v) => { setGradeLevel(v); if (v !== "11" && v !== "12") setStream(""); }}>
-                  <SelectTrigger><SelectValue placeholder="Select grade" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Select your grade level" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="9">Grade 9</SelectItem>
                     <SelectItem value="10">Grade 10</SelectItem>
@@ -230,20 +244,20 @@ export default function Register() {
               </div>
               {needsStream && (
                 <div className="space-y-2">
-                  <Label>Stream</Label>
+                  <Label>Stream <span className="text-destructive">*</span></Label>
                   <Select value={stream} onValueChange={setStream}>
-                    <SelectTrigger><SelectValue placeholder="Select stream" /></SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder="Select your stream" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Science">Natural Science</SelectItem>
-                      <SelectItem value="Arts">Social Science</SelectItem>
+                      <SelectItem value="Natural Science">Natural Science</SelectItem>
+                      <SelectItem value="Social Science">Social Science</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               )}
               <div className="space-y-2">
-                <Label>Section</Label>
+                <Label>Section <span className="text-destructive">*</span></Label>
                 <Select value={section} onValueChange={setSection}>
-                  <SelectTrigger><SelectValue placeholder="Select section" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Select your section" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="oromo">Oromo</SelectItem>
                     <SelectItem value="amharic">Amharic</SelectItem>

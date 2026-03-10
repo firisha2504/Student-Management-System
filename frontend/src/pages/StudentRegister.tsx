@@ -104,7 +104,6 @@ export default function StudentRegister() {
     // Show registration slip
     const { courses } = registrationStatus;
     const totalCreditHours = courses?.reduce((sum, course) => sum + (course.credit_hours || 3), 0) || 0;
-    const totalEcts = courses?.reduce((sum, course) => sum + (course.ects || 5), 0) || 0;
 
     return (
       <div className="max-w-4xl mx-auto space-y-6">
@@ -152,7 +151,6 @@ export default function StudentRegister() {
                       <TableHead>Course Title</TableHead>
                       <TableHead>Course Code</TableHead>
                       <TableHead className="text-center">Cr.Hr</TableHead>
-                      <TableHead className="text-center">ECTS</TableHead>
                       <TableHead>Instructor</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -163,14 +161,12 @@ export default function StudentRegister() {
                         <TableCell>{course.subject_name}</TableCell>
                         <TableCell className="font-mono text-sm">{course.subject_code}</TableCell>
                         <TableCell className="text-center">{course.credit_hours || 3}</TableCell>
-                        <TableCell className="text-center">{course.ects || 5}</TableCell>
                         <TableCell>{course.instructor || 'TBA'}</TableCell>
                       </TableRow>
                     ))}
                     <TableRow className="bg-muted/30 font-bold">
                       <TableCell colSpan={3} className="text-right">Total</TableCell>
                       <TableCell className="text-center">{totalCreditHours}</TableCell>
-                      <TableCell className="text-center">{totalEcts}</TableCell>
                       <TableCell></TableCell>
                     </TableRow>
                   </TableBody>
@@ -211,7 +207,6 @@ export default function StudentRegister() {
 
   // Show registration form (promotion confirmation)
   const totalCreditHours = availableCourses.reduce((sum, course) => sum + (course.credit_hours || 3), 0);
-  const totalEcts = availableCourses.reduce((sum, course) => sum + (course.ects || 5), 0);
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -268,7 +263,6 @@ export default function StudentRegister() {
                       <TableHead>Course Title</TableHead>
                       <TableHead>Course Code</TableHead>
                       <TableHead className="text-center">Cr.Hr</TableHead>
-                      <TableHead className="text-center">ECTS</TableHead>
                       <TableHead>Instructor</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -279,7 +273,6 @@ export default function StudentRegister() {
                         <TableCell>{course.subject_name}</TableCell>
                         <TableCell className="font-mono text-sm">{course.subject_code}</TableCell>
                         <TableCell className="text-center">{course.credit_hours || 3}</TableCell>
-                        <TableCell className="text-center">{course.ects || 5}</TableCell>
                         <TableCell>{course.teachers && course.teachers.length > 0 ? course.teachers[0].name : 'TBA'}</TableCell>
                       </TableRow>
                     ))}
@@ -288,10 +281,7 @@ export default function StudentRegister() {
               </div>
               <div className="mt-3 flex items-center justify-between px-4 py-2 bg-muted/30 rounded-lg">
                 <span className="font-semibold">Total:</span>
-                <div className="flex gap-6">
-                  <span className="text-sm"><span className="font-semibold">{totalCreditHours}</span> Credit Hours</span>
-                  <span className="text-sm"><span className="font-semibold">{totalEcts}</span> ECTS</span>
-                </div>
+                <span className="text-sm"><span className="font-semibold">{totalCreditHours}</span> Credit Hours</span>
               </div>
             </div>
           )}
@@ -322,7 +312,13 @@ export default function StudentRegister() {
       </Card>
 
       {/* Success Modal */}
-      <Dialog open={successModal} onOpenChange={setSuccessModal}>
+      <Dialog open={successModal} onOpenChange={(open) => {
+        setSuccessModal(open);
+        if (!open) {
+          // When modal closes, force a refresh to show the registration slip
+          fetchRegistrationStatus();
+        }
+      }}>
         <DialogContent className="sm:max-w-md text-center">
           <DialogHeader className="items-center">
             <div className="mx-auto mb-4 rounded-full bg-green-100 dark:bg-green-900/30 p-4">

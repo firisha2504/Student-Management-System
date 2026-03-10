@@ -104,8 +104,8 @@ router.post('/', authenticate, authorize('admin', 'registrar'), [
       const enrollmentDate = new Date().toISOString().split('T')[0];
       
       await connection.query(
-        'INSERT INTO student_profiles (user_id, admission_number, grade_level, enrollment_date) VALUES (?, ?, ?, ?)',
-        [userId, admissionNumber, 9, enrollmentDate] // Default to grade 9
+        'INSERT INTO student_profiles (user_id, admission_number, enrollment_date) VALUES (?, ?, ?)',
+        [userId, admissionNumber, enrollmentDate] // No default grade - student must set it
       );
     }
 

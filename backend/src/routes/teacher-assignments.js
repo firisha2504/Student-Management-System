@@ -11,25 +11,25 @@ router.get('/:teacherId', authenticate, authorize('admin', 'registrar', 'directo
 
     // Get assigned subjects
     const [subjects] = await pool.query(
-      'SELECT subject_id FROM teacher_subject_assignments WHERE teacher_id = ?',
+      'SELECT subject_id FROM teacher_subjects WHERE teacher_id = ?',
       [teacherId]
     );
 
     // Get assigned grades
     const [grades] = await pool.query(
-      'SELECT DISTINCT grade_level FROM teacher_subject_assignments WHERE teacher_id = ?',
+      'SELECT DISTINCT grade_level FROM teacher_subjects WHERE teacher_id = ?',
       [teacherId]
     );
 
     // Get assigned sections
     const [sections] = await pool.query(
-      'SELECT DISTINCT section FROM teacher_subject_assignments WHERE teacher_id = ? AND section IS NOT NULL',
+      'SELECT section FROM teacher_sections WHERE teacher_id = ?',
       [teacherId]
     );
 
     // Get assigned sub-sections
     const [subSections] = await pool.query(
-      'SELECT DISTINCT sub_section FROM teacher_subject_assignments WHERE teacher_id = ? AND sub_section IS NOT NULL',
+      'SELECT sub_section FROM teacher_sub_sections WHERE teacher_id = ?',
       [teacherId]
     );
 
@@ -57,41 +57,59 @@ router.post('/:teacherId', authenticate, authorize('admin', 'registrar', 'direct
 
     // Delete existing assignments
     await connection.query(
-      'DELETE FROM teacher_subject_assignments WHERE teacher_id = ?',
+      'DELETE FROM teacher_subjects WHERE teacher_id = ?',
+      [teacherId]
+    );
+    await connection.query(
+      'DELETE FROM teacher_sections WHERE teacher_id = ?',
+      [teacherId]
+    );
+    await connection.query(
+      'DELETE FROM teacher_sub_sections WHERE teacher_id = ?',
       [teacherId]
     );
 
-    // Insert new assignments
+    // Insert new subject and grade assignments
     if (subjects && subjects.length > 0 && grades && grades.length > 0) {
-      const assignments = [];
+      const subjectAssignments = [];
       
       for (const subjectId of subjects) {
         for (const gradeLevel of grades) {
-          // If sections specified, create assignment for each section
-          if (sections && sections.length > 0) {
-            for (const section of sections) {
-              // If sub-sections specified, create assignment for each sub-section
-              if (subSections && subSections.length > 0) {
-                for (const subSection of subSections) {
-                  assignments.push([teacherId, subjectId, gradeLevel, section, subSection]);
-                }
-              } else {
-                assignments.push([teacherId, subjectId, gradeLevel, section, null]);
-              }
-            }
-          } else {
-            // No sections specified
-            assignments.push([teacherId, subjectId, gradeLevel, null, null]);
-          }
+          // Get the stream for this subject and grade
+          const [subjectInfo] = await connection.query(
+            'SELECT stream FROM subjects WHERE id = ? AND grade_level = ?',
+            [subjectId, gradeLevel]
+          );
+          
+          const stream = subjectInfo[0]?.stream || null;
+          subjectAssignments.push([teacherId, subjectId, gradeLevel, stream]);
         }
       }
 
-      if (assignments.length > 0) {
+      if (subjectAssignments.length > 0) {
         await connection.query(
-          'INSERT INTO teacher_subject_assignments (teacher_id, subject_id, grade_level, section, sub_section) VALUES ?',
-          [assignments]
+          'INSERT INTO teacher_subjects (teacher_id, subject_id, grade_level, stream) VALUES ?',
+          [subjectAssignments]
         );
       }
+    }
+
+    // Insert section assignments
+    if (sections && sections.length > 0) {
+      const sectionAssignments = sections.map(section => [teacherId, section]);
+      await connection.query(
+        'INSERT INTO teacher_sections (teacher_id, section) VALUES ?',
+        [sectionAssignments]
+      );
+    }
+
+    // Insert sub-section assignments
+    if (subSections && subSections.length > 0) {
+      const subSectionAssignments = subSections.map(subSection => [teacherId, subSection]);
+      await connection.query(
+        'INSERT INTO teacher_sub_sections (teacher_id, sub_section) VALUES ?',
+        [subSectionAssignments]
+      );
     }
 
     await connection.commit();
@@ -112,15 +130,15 @@ router.get('/', authenticate, authorize('admin', 'registrar', 'director'), async
       SELECT 
         u.id as teacher_id,
         p.full_name,
-        p.username,
-        COUNT(DISTINCT tsa.subject_id) as subject_count,
-        COUNT(DISTINCT tsa.grade_level) as grade_count
+        u.username,
+        COUNT(DISTINCT ts.subject_id) as subject_count,
+        COUNT(DISTINCT ts.grade_level) as grade_count
       FROM users u
       INNER JOIN profiles p ON u.id = p.user_id
       INNER JOIN user_roles r ON u.id = r.user_id
-      LEFT JOIN teacher_subject_assignments tsa ON u.id = tsa.teacher_id
+      LEFT JOIN teacher_subjects ts ON u.id = ts.teacher_id
       WHERE r.role = 'teacher' AND p.is_active = 1
-      GROUP BY u.id, p.full_name, p.username
+      GROUP BY u.id, p.full_name, u.username
       ORDER BY p.full_name
     `);
 
