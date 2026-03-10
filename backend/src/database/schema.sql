@@ -81,6 +81,7 @@ CREATE TABLE student_profiles (
   admission_number VARCHAR(50) UNIQUE NOT NULL,
   grade_level INT NOT NULL,
   stream ENUM('Science', 'Arts', 'Commerce'),
+  section ENUM('oromo', 'amharic', 'somali'),
   sub_section VARCHAR(10),
   enrollment_date DATE NOT NULL,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,

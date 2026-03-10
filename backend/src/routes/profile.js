@@ -69,7 +69,8 @@ router.patch('/me', authenticate, [
   body('date_of_birth').optional().isISO8601(),
   body('gender').optional().isIn(['male', 'female', 'other']),
   body('grade_level').optional().isInt({ min: 1, max: 12 }),
-  body('stream').optional().isIn(['Science', 'Arts', 'Commerce', 'natural', 'social', null])
+  body('stream').optional().isIn(['Science', 'Arts', 'Commerce', 'natural', 'social', null]),
+  body('section').optional().isIn(['oromo', 'amharic', 'somali', null])
 ], async (req, res) => {
   const connection = await pool.getConnection();
   
@@ -79,7 +80,7 @@ router.patch('/me', authenticate, [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { full_name, phone, address, date_of_birth, gender, grade_level, stream } = req.body;
+    const { full_name, phone, address, date_of_birth, gender, grade_level, stream, section } = req.body;
     
     await connection.beginTransaction();
     
@@ -100,11 +101,12 @@ router.patch('/me', authenticate, [
       );
     }
 
-    // Update student_profiles table if grade_level or stream is provided
-    if (grade_level !== undefined || stream !== undefined) {
+    // Update student_profiles table if grade_level, stream, or section is provided
+    if (grade_level !== undefined || stream !== undefined || section !== undefined) {
       const studentUpdates = {};
       if (grade_level !== undefined) studentUpdates.grade_level = grade_level;
       if (stream !== undefined) studentUpdates.stream = stream;
+      if (section !== undefined) studentUpdates.section = section;
 
       if (Object.keys(studentUpdates).length > 0) {
         const setClause = Object.keys(studentUpdates).map(key => `${key} = ?`).join(', ');

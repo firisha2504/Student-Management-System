@@ -16,6 +16,7 @@ export default function Register() {
   const { toast } = useToast();
   const [gradeLevel, setGradeLevel] = useState<string>(profile?.grade_level?.toString() || "");
   const [stream, setStream] = useState<string>(profile?.stream || "");
+  const [section, setSection] = useState<string>((profile as any)?.section || "");
   const [newPassword, setNewPassword] = useState("");
   const [saving, setSaving] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -40,11 +41,16 @@ export default function Register() {
       toast({ title: "Error", description: "Please select a stream.", variant: "destructive" });
       return;
     }
+    if (!section) {
+      toast({ title: "Error", description: "Please select a section.", variant: "destructive" });
+      return;
+    }
 
     setSaving(true);
     try {
       const updates: any = {
         grade_level: parseInt(gradeLevel),
+        section,
       };
       
       if (needsStream) {
@@ -70,8 +76,14 @@ export default function Register() {
     }
     setSaving(true);
     try {
-      // TODO: Implement password change via backend API
-      toast({ title: "Coming Soon", description: "Password change will be available soon" });
+      // Note: Backend requires current password, but for student self-service we'll need to add a field
+      // For now, show a message that they need to contact admin
+      toast({ 
+        title: "Contact Admin", 
+        description: "Please contact your administrator to change your password.",
+        variant: "default"
+      });
+      setNewPassword("");
     } catch (error: any) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } finally {
@@ -108,6 +120,12 @@ export default function Register() {
                 <Label>Grade Level</Label>
                 <Input value={`Grade ${profile?.grade_level}`} disabled className="bg-muted/50" />
               </div>
+              {(profile as any)?.section && (
+                <div className="space-y-2">
+                  <Label>Section</Label>
+                  <Input value={(profile as any).section.charAt(0).toUpperCase() + (profile as any).section.slice(1)} disabled className="bg-muted/50" />
+                </div>
+              )}
               {profile?.stream ? (
                 <div className="space-y-2">
                   <Label>Stream</Label>
@@ -189,6 +207,17 @@ export default function Register() {
                   </Select>
                 </div>
               )}
+              <div className="space-y-2">
+                <Label>Section</Label>
+                <Select value={section} onValueChange={setSection}>
+                  <SelectTrigger><SelectValue placeholder="Select section" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="oromo">Oromo</SelectItem>
+                    <SelectItem value="amharic">Amharic</SelectItem>
+                    <SelectItem value="somali">Somali</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="flex items-start gap-2 rounded-xl bg-warning/10 p-3">
                 <Info className="h-4 w-4 text-warning mt-0.5 shrink-0" />
                 <p className="text-sm text-warning font-medium">
