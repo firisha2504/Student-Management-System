@@ -1,7 +1,8 @@
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, Copy, Check } from "lucide-react";
 import { useState } from "react";
+import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 
 interface Credential {
   name: string;
@@ -40,6 +41,11 @@ export default function SuccessModal({ open, onClose, title, description, creden
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="sm:max-w-md text-center p-8 max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <VisuallyHidden>
+            <DialogTitle>{title}</DialogTitle>
+          </VisuallyHidden>
+        </DialogHeader>
         <div className="flex flex-col items-center gap-4">
           <div className="gradient-accent rounded-full p-4">
             <CheckCircle2 className="h-8 w-8 text-white" />
