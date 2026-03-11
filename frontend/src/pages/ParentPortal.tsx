@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-// Supabase removed - replace with your backend API
+import { api } from "@/services/api";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -8,6 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { BookOpen, Trophy, Eye, EyeOff } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useToast } from "@/hooks/use-toast";
 import AcademicHistory from "@/components/AcademicHistory";
 
 interface ChildProfile {
@@ -16,6 +17,7 @@ interface ChildProfile {
   grade_level: number | null;
   stream: string | null;
   section: string | null;
+  sub_section: string | null;
   profile_image: string | null;
   id_number: string;
 }
@@ -23,14 +25,13 @@ interface ChildProfile {
 interface AssessmentScore {
   assessment_name: string;
   weight: number;
-  score: number;
+  score: number | null;
 }
 
 interface SubjectBreakdown {
   subject_name: string;
   subject_id: string;
-  grade_level: number;
-  stream: string | null;
+  credit_hours: number;
   teacher_name: string;
   assessments: AssessmentScore[];
   totalScore: number;
@@ -40,329 +41,344 @@ interface SubjectBreakdown {
 
 export default function ParentPortal() {
   const { user, role } = useAuth();
+  const { toast } = useToast();
   const [children, setChildren] = useState<ChildProfile[]>([]);
   const [selectedChild, setSelectedChild] = useState<ChildProfile | null>(null);
   const [breakdowns, setBreakdowns] = useState<SubjectBreakdown[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingGrades, setLoadingGrades] = useState(false);
   const [openSubjects, setOpenSubjects] = useState<Set<string>>(new Set());
-  const [ranking, setRanking] = useState<{ rank: number; total: number; average: number } | null>(null);
+  const [ranking, setRanking] = useState<{ rank: number; total: number; average: number; approved: boolean } | null>(null);
 
   useEffect(() => {
     if (!user) return;
-    const fetchChildren = async () => {
-      const { data: links } = await supabase.from("parent_students" as any).select("student_id").eq("parent_id", user.id);
-      const studentIds = (links as any[] || []).map((l: any) => l.student_id);
-      if (studentIds.length === 0) { setLoading(false); return; }
-      const { data: profiles } = await supabase.from("profiles").select("*").in("user_id", studentIds);
-      const kids = (profiles || []).map(p => ({
-        user_id: p.user_id, full_name: p.full_name, grade_level: p.grade_level,
-        stream: p.stream, section: p.section, profile_image: p.profile_image, id_number: p.id_number,
-      }));
-      setChildren(kids);
-      if (kids.length === 1) setSelectedChild(kids[0]);
-      setLoading(false);
-    };
     fetchChildren();
   }, [user]);
 
   useEffect(() => {
     if (!selectedChild) return;
     fetchChildGrades(selectedChild);
+    fetchChildRanking(selectedChild);
   }, [selectedChild]);
+
+  const fetchChildren = async () => {
+    setLoading(true);
+    try {
+      const data = await api.getMyChildren();
+      setChildren(data || []);
+      if (data && data.length === 1) {
+        setSelectedChild(data[0]);
+      }
+    } catch (error: any) {
+      console.error('Failed to fetch children:', error);
+      toast({ title: "Error", description: "Failed to load children", variant: "destructive" });
+    }
+    setLoading(false);
+  };
 
   const fetchChildGrades = async (child: ChildProfile) => {
     setLoadingGrades(true);
-    if (!child.grade_level) { setBreakdowns([]); setLoadingGrades(false); return; }
-
-    let query = supabase.from("subjects").select("*").eq("grade_level", child.grade_level);
-    if (child.grade_level >= 11 && child.stream) query = query.eq("stream", child.stream as "natural" | "social");
-    else query = query.is("stream", null);
-    const { data: subjects } = await query;
-    const subs = subjects || [];
-
-    if (subs.length === 0) { setBreakdowns([]); setLoadingGrades(false); return; }
-
-    const { data: atData } = await supabase.from("assessment_types").select("id, assessment_name, weight, subject_id, teacher_id").in("subject_id", subs.map(s => s.id));
-    const assessmentTypes = (atData || []) as any[];
-
-    // Fetch teacher names
-    const teacherIds = [...new Set(assessmentTypes.map((a: any) => a.teacher_id))] as string[];
-    const tMap: Record<string, string> = {};
-    if (teacherIds.length > 0) {
-      const { data: teacherProfiles } = await supabase.rpc("get_teacher_names", { teacher_ids: teacherIds });
-      (teacherProfiles || []).forEach((p: any) => { tMap[p.user_id] = p.full_name; });
-    }
-
-    const { data: scoreData } = await supabase.from("assessment_scores").select("assessment_type_id, score").eq("student_id", child.user_id);
-    const scoreMap: Record<string, number> = {};
-    (scoreData || []).forEach((s: any) => { scoreMap[s.assessment_type_id] = Number(s.score); });
-
-    const bds: SubjectBreakdown[] = subs.map(sub => {
-      const subAssessments = assessmentTypes.filter((a: any) => a.subject_id === sub.id);
-      const assessments = subAssessments.map((a: any) => ({
-        assessment_name: a.assessment_name, weight: Number(a.weight), score: scoreMap[a.id] ?? -1,
-      }));
-      const scored = assessments.filter(a => a.score >= 0);
-      const totalScore = scored.reduce((sum, a) => sum + a.score, 0);
-      // Get teacher from first assessment type
-      const teacherName = subAssessments.length > 0 && tMap[subAssessments[0].teacher_id] ? tMap[subAssessments[0].teacher_id] : "—";
-      return {
-        subject_name: sub.subject_name, subject_id: sub.id, grade_level: sub.grade_level,
-        stream: sub.stream, teacher_name: teacherName, assessments, totalScore,
-        hasScores: scored.length > 0, hasAssessments: subAssessments.length > 0,
-      };
-    });
-    setBreakdowns(bds);
-
-    // Fetch ranking
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const params = new URLSearchParams({ grade_level: child.grade_level.toString() });
-      if (child.stream) params.set("stream", child.stream);
-      if (child.section) params.set("section", child.section);
-      const { data } = await supabase.functions.invoke(`student-rankings?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${session?.access_token}` },
-      });
-      const childRank = (data?.rankings || []).find((r: any) => r.user_id === child.user_id);
-      if (childRank) setRanking({ rank: childRank.rank, total: data.rankings.length, average: childRank.average });
-      else setRanking(null);
-    } catch { setRanking(null); }
+      if (!child.grade_level) {
+        setBreakdowns([]);
+        setLoadingGrades(false);
+        return;
+      }
 
+      const data = await api.getChildGrades(child.user_id);
+      setBreakdowns(data.breakdowns || []);
+    } catch (error: any) {
+      console.error('Failed to fetch grades:', error);
+      toast({ title: "Error", description: "Failed to load grades", variant: "destructive" });
+      setBreakdowns([]);
+    }
     setLoadingGrades(false);
   };
 
-  const toggleSubject = (id: string) => {
-    setOpenSubjects(prev => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+  const fetchChildRanking = async (child: ChildProfile) => {
+    try {
+      const data = await api.getChildRanking(child.user_id);
+      setRanking(data);
+    } catch (error: any) {
+      console.error('Failed to fetch ranking:', error);
+      setRanking(null);
+    }
   };
 
-  if (role !== "parent") return <p className="text-destructive">Access denied.</p>;
+  const toggleSubject = (subjectId: string) => {
+    setOpenSubjects(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(subjectId)) {
+        newSet.delete(subjectId);
+      } else {
+        newSet.add(subjectId);
+      }
+      return newSet;
+    });
+  };
 
-  const gradedCount = breakdowns.filter(b => b.hasScores).length;
-  const progressPercent = breakdowns.length > 0 ? Math.round((gradedCount / breakdowns.length) * 100) : 0;
-  const initials = selectedChild?.full_name?.split(" ").map(n => n[0]).join("").toUpperCase() || "?";
+  const getLetterGrade = (score: number) => {
+    if (score >= 90) return "A";
+    if (score >= 80) return "B";
+    if (score >= 70) return "C";
+    if (score >= 60) return "D";
+    if (score >= 50) return "E";
+    return "F";
+  };
 
-  // Group by teacher
-  const teacherGroups: Record<string, SubjectBreakdown[]> = {};
-  breakdowns.forEach(bd => {
-    const teacher = bd.teacher_name;
-    if (!teacherGroups[teacher]) teacherGroups[teacher] = [];
-    teacherGroups[teacher].push(bd);
-  });
-  const teacherEntries = Object.entries(teacherGroups);
+  const getGradeColor = (score: number) => {
+    if (score >= 80) return "text-emerald-600";
+    if (score >= 60) return "text-blue-600";
+    if (score >= 50) return "text-amber-600";
+    return "text-red-600";
+  };
+
+  if (role !== "parent") {
+    return <p className="text-destructive">Access denied. Parent role required.</p>;
+  }
+
+  if (loading) {
+    return <p className="text-center text-muted-foreground py-8">Loading...</p>;
+  }
+
+  if (children.length === 0) {
+    return (
+      <Card className="border-0 shadow-sm">
+        <CardContent className="py-12 text-center">
+          <BookOpen className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+          <p className="text-lg font-semibold text-foreground mb-2">No Children Linked</p>
+          <p className="text-sm text-muted-foreground">
+            Please contact the school registrar to link your children to your account.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const overallAverage = breakdowns.length > 0
+    ? Math.round((breakdowns.reduce((sum, b) => sum + b.totalScore, 0) / breakdowns.length) * 100) / 100
+    : 0;
 
   return (
     <div className="space-y-6">
-      <div className="gradient-hero rounded-2xl p-8 text-white relative overflow-hidden">
-        <div className="relative z-10">
-          <h1 className="text-2xl font-extrabold">Parent Portal</h1>
-          <p className="text-white/70 mt-1">View your child's academic progress</p>
-        </div>
+      <div>
+        <h2 className="text-xl font-bold text-foreground">Parent Portal</h2>
+        <p className="text-sm text-muted-foreground">View your children's academic progress</p>
       </div>
 
-      {loading ? (
-        <p className="text-muted-foreground text-center py-8">Loading...</p>
-      ) : children.length === 0 ? (
-        <Card className="border-0 shadow-md">
-          <CardContent className="py-10 text-center">
-            <p className="text-muted-foreground">No student accounts linked to your profile yet. Please contact the school registrar.</p>
-          </CardContent>
-        </Card>
-      ) : (
-        <>
-          {children.length > 1 && (
-            <div className="flex gap-3 flex-wrap">
+      {/* Children Selector */}
+      {children.length > 1 && (
+        <Card className="border-0 shadow-sm">
+          <CardContent className="pt-6">
+            <p className="text-sm font-semibold mb-3">Select Child:</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
               {children.map(child => (
                 <button
                   key={child.user_id}
                   onClick={() => setSelectedChild(child)}
-                  className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 transition-all ${
+                  className={`p-3 rounded-xl border-2 transition-all text-left ${
                     selectedChild?.user_id === child.user_id
-                      ? "border-primary bg-primary/10 text-primary font-semibold"
+                      ? "border-primary bg-primary/10"
                       : "border-border hover:border-primary/40"
                   }`}
                 >
-                  <Avatar className="h-6 w-6">
-                    <AvatarImage src={child.profile_image || undefined} />
-                    <AvatarFallback className="text-[10px] gradient-primary text-white">{child.full_name?.split(" ").map(n => n[0]).join("").toUpperCase()}</AvatarFallback>
-                  </Avatar>
-                  <span className="text-sm">{child.full_name}</span>
+                  <div className="flex items-center gap-2">
+                    <Avatar className="h-8 w-8">
+                      <AvatarImage src={child.profile_image || undefined} />
+                      <AvatarFallback>{child.full_name.charAt(0)}</AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold truncate">{child.full_name}</p>
+                      <p className="text-xs text-muted-foreground">Grade {child.grade_level}</p>
+                    </div>
+                  </div>
                 </button>
               ))}
             </div>
-          )}
+          </CardContent>
+        </Card>
+      )}
 
-          {selectedChild && (
-            <>
-              {/* Child Profile Card */}
-              <Card className="border-0 shadow-md">
-                <CardContent className="pt-6 pb-5 flex items-center gap-4">
-                  <Avatar className="h-14 w-14">
-                    <AvatarImage src={selectedChild.profile_image || undefined} />
-                    <AvatarFallback className="gradient-primary text-white font-bold text-lg">{initials}</AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <h2 className="text-lg font-extrabold text-foreground">{selectedChild.full_name}</h2>
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      {selectedChild.grade_level && <span>Grade {selectedChild.grade_level}</span>}
-                      {selectedChild.stream && <><span>·</span><span className="capitalize">{selectedChild.stream}</span></>}
-                      {selectedChild.section && <><span>·</span><span className="capitalize">{selectedChild.section}</span></>}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Rank Card */}
-              {ranking && (
-                <Card className="border-0 shadow-md overflow-hidden">
-                  <div className="gradient-accent p-5 text-white">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="bg-white/10 rounded-xl p-2.5"><Trophy className="h-6 w-6" /></div>
-                        <div>
-                          <p className="text-sm text-white/70">Rank</p>
-                          <p className="text-2xl font-extrabold">{ranking.rank}<span className="text-sm font-normal text-white/70">/{ranking.total}</span></p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm text-white/70">Average</p>
-                        <p className="text-2xl font-extrabold">{ranking.average}%</p>
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-              )}
-
-              {/* Progress */}
-              <Card className="border-0 shadow-md overflow-hidden">
-                <div className="gradient-hero p-6 text-white">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="bg-white/10 rounded-xl p-2"><BookOpen className="h-5 w-5" /></div>
-                    <h3 className="font-bold">Subject Progress</h3>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <div className="flex-1">
-                      <Progress value={progressPercent} className="h-2.5 bg-white/15 [&>div]:gradient-accent" />
-                    </div>
-                    <span className="text-sm font-bold">{gradedCount}/{breakdowns.length} graded</span>
+      {selectedChild && (
+        <>
+          {/* Student Info Card */}
+          <Card className="border-0 shadow-sm">
+            <CardContent className="pt-6">
+              <div className="flex items-start gap-4">
+                <Avatar className="h-16 w-16">
+                  <AvatarImage src={selectedChild.profile_image || undefined} />
+                  <AvatarFallback className="text-xl">{selectedChild.full_name.charAt(0)}</AvatarFallback>
+                </Avatar>
+                <div className="flex-1">
+                  <h3 className="text-lg font-bold text-foreground">{selectedChild.full_name}</h3>
+                  <p className="text-sm text-muted-foreground">ID: {selectedChild.id_number}</p>
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    <Badge variant="outline">Grade {selectedChild.grade_level}</Badge>
+                    {selectedChild.stream && (
+                      <Badge variant="outline" className="capitalize">{selectedChild.stream}</Badge>
+                    )}
+                    {selectedChild.section && (
+                      <Badge variant="outline" className="capitalize">{selectedChild.section}</Badge>
+                    )}
+                    {selectedChild.sub_section && (
+                      <Badge variant="outline">Sub-Section {selectedChild.sub_section}</Badge>
+                    )}
                   </div>
                 </div>
-              </Card>
+                <div className="text-right">
+                  <p className="text-xs text-muted-foreground mb-1">Overall Average</p>
+                  <p className={`text-3xl font-extrabold ${getGradeColor(overallAverage)}`}>
+                    {overallAverage}%
+                  </p>
+                  <p className="text-xs font-semibold text-muted-foreground mt-1">
+                    Grade {getLetterGrade(overallAverage)}
+                  </p>
+                </div>
+              </div>
 
-              {/* Subjects Table — same as Student Portal */}
-              <Card className="border-0 shadow-md overflow-hidden">
-                <CardContent className="p-0">
-                  {loadingGrades ? (
-                    <p className="text-muted-foreground p-6">Loading grades...</p>
-                  ) : breakdowns.length === 0 ? (
-                    <p className="text-muted-foreground text-center py-10">No subjects assigned yet</p>
-                  ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="bg-muted/50">
-                          <TableHead className="font-semibold">Teacher</TableHead>
-                          <TableHead className="font-semibold">Subject</TableHead>
-                          <TableHead className="font-semibold">Grade</TableHead>
-                          <TableHead className="font-semibold">Stream</TableHead>
-                          <TableHead className="font-semibold text-center w-[80px]">Action</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {teacherEntries.map(([teacher, bds]) =>
-                          bds.map((bd, idx) => (
-                            <Collapsible key={bd.subject_id} asChild open={openSubjects.has(bd.subject_id)} onOpenChange={() => toggleSubject(bd.subject_id)}>
-                              <>
-                                <TableRow className="hover:bg-muted/50">
-                                  {idx === 0 ? (
-                                    <TableCell className="text-sm font-semibold align-top border-r border-border/50" rowSpan={bds.length}>
-                                      {teacher}
-                                    </TableCell>
-                                  ) : null}
-                                  <TableCell className="text-sm">{bd.subject_name}</TableCell>
-                                  <TableCell className="text-sm">Grade {bd.grade_level}</TableCell>
-                                  <TableCell className="text-sm">{bd.stream ? bd.stream.charAt(0).toUpperCase() + bd.stream.slice(1) : "—"}</TableCell>
-                                  <TableCell className="text-center">
-                                    {bd.hasAssessments ? (
-                                      <CollapsibleTrigger asChild>
-                                        <button className="inline-flex items-center justify-center rounded-lg p-1.5 hover:bg-muted transition-colors" title="View assessments">
-                                          {openSubjects.has(bd.subject_id) ? (
-                                            <EyeOff className="h-4 w-4 text-muted-foreground" />
+              {/* Ranking Info */}
+              {ranking && ranking.approved && ranking.rank && (
+                <div className="mt-4 pt-4 border-t flex items-center gap-3">
+                  <Trophy className="h-5 w-5 text-amber-500" />
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">
+                      Rank: #{ranking.rank} out of {ranking.total} students
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Class Average: {ranking.average}%
+                    </p>
+                  </div>
+                </div>
+              )}
+              {ranking && !ranking.approved && (
+                <div className="mt-4 pt-4 border-t">
+                  <p className="text-sm text-muted-foreground">
+                    Rankings not yet published by the director
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Grades Breakdown */}
+          <Card className="border-0 shadow-sm">
+            <CardContent className="pt-6">
+              <h3 className="text-lg font-bold text-foreground mb-4">Subject Grades</h3>
+
+              {loadingGrades ? (
+                <p className="text-center text-muted-foreground py-8">Loading grades...</p>
+              ) : breakdowns.length === 0 ? (
+                <p className="text-center text-muted-foreground py-8">No grades available yet</p>
+              ) : (
+                <div className="space-y-2">
+                  {breakdowns.map(subject => (
+                    <Collapsible
+                      key={subject.subject_id}
+                      open={openSubjects.has(subject.subject_id)}
+                      onOpenChange={() => toggleSubject(subject.subject_id)}
+                    >
+                      <Card className="border overflow-hidden">
+                        <CollapsibleTrigger className="w-full">
+                          <div className="p-4 hover:bg-muted/30 transition-colors">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-3 flex-1">
+                                <BookOpen className="h-5 w-5 text-primary" />
+                                <div className="text-left">
+                                  <p className="font-semibold text-foreground">{subject.subject_name}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    Teacher: {subject.teacher_name}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-4">
+                                <div className="text-right">
+                                  <p className={`text-2xl font-bold ${getGradeColor(subject.totalScore)}`}>
+                                    {subject.totalScore}%
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    Grade {getLetterGrade(subject.totalScore)}
+                                  </p>
+                                </div>
+                                {openSubjects.has(subject.subject_id) ? (
+                                  <Eye className="h-4 w-4 text-muted-foreground" />
+                                ) : (
+                                  <EyeOff className="h-4 w-4 text-muted-foreground" />
+                                )}
+                              </div>
+                            </div>
+                            {subject.hasAssessments && (
+                              <div className="mt-3">
+                                <Progress value={subject.totalScore} className="h-2" />
+                              </div>
+                            )}
+                          </div>
+                        </CollapsibleTrigger>
+
+                        <CollapsibleContent>
+                          <div className="border-t bg-muted/20 p-4">
+                            {!subject.hasAssessments ? (
+                              <p className="text-sm text-muted-foreground text-center py-4">
+                                No assessments configured for this subject
+                              </p>
+                            ) : !subject.hasScores ? (
+                              <p className="text-sm text-muted-foreground text-center py-4">
+                                No scores published yet
+                              </p>
+                            ) : (
+                              <Table>
+                                <TableHeader>
+                                  <TableRow className="bg-muted/40">
+                                    <TableHead>Assessment</TableHead>
+                                    <TableHead className="text-center">Weight</TableHead>
+                                    <TableHead className="text-center">Score</TableHead>
+                                    <TableHead className="text-right">Contribution</TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {subject.assessments.map((assessment, idx) => {
+                                    const contribution = assessment.score
+                                      ? Math.round((assessment.score * assessment.weight) / 100 * 100) / 100
+                                      : 0;
+                                    return (
+                                      <TableRow key={idx}>
+                                        <TableCell className="font-medium">{assessment.assessment_name}</TableCell>
+                                        <TableCell className="text-center">{assessment.weight}%</TableCell>
+                                        <TableCell className="text-center">
+                                          {assessment.score !== null ? (
+                                            <Badge variant={assessment.score >= 50 ? "default" : "destructive"}>
+                                              {assessment.score}%
+                                            </Badge>
                                           ) : (
-                                            <Eye className="h-4 w-4 text-primary" />
+                                            <span className="text-muted-foreground text-sm">—</span>
                                           )}
-                                        </button>
-                                      </CollapsibleTrigger>
-                                    ) : (
-                                      <span className="text-xs text-muted-foreground">—</span>
-                                    )}
-                                  </TableCell>
-                                </TableRow>
-                                <CollapsibleContent asChild>
-                                  <tr>
-                                    <td colSpan={5} className="p-0">
-                                      {bd.assessments.length > 0 && (
-                                        <div className="mx-4 my-3 rounded-xl border border-border/60 bg-card/80 backdrop-blur-sm overflow-hidden shadow-sm">
-                                          <div className="grid grid-cols-3 gap-0 text-xs font-semibold text-muted-foreground uppercase tracking-wider px-4 py-2.5 bg-muted/40 border-b border-border/40">
-                                            <span>Assessment</span>
-                                            <span className="text-center">Weight</span>
-                                            <span className="text-right">Score</span>
-                                          </div>
-                                          <div className="divide-y divide-border/30">
-                                            {bd.assessments.map((a, i) => (
-                                              <div key={i} className="grid grid-cols-3 gap-0 items-center px-4 py-2.5 hover:bg-muted/20 transition-colors">
-                                                <span className="text-sm font-medium text-foreground">{a.assessment_name}</span>
-                                                <span className="text-sm text-center text-muted-foreground">{a.weight}%</span>
-                                                <div className="text-right">
-                                                  {a.score >= 0 ? (
-                                                    <Badge variant="outline" className={`text-xs font-bold ${
-                                                      a.score >= a.weight * 0.5
-                                                        ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-400"
-                                                        : "bg-destructive/10 text-destructive border-destructive/30"
-                                                    }`}>
-                                                      {a.score}/{a.weight}
-                                                    </Badge>
-                                                  ) : (
-                                                    <Badge variant="outline" className="text-xs text-muted-foreground border-border/50">Pending</Badge>
-                                                  )}
-                                                </div>
-                                              </div>
-                                            ))}
-                                          </div>
-                                          {(() => {
-                                            const scored = bd.assessments.filter(a => a.score >= 0);
-                                            if (scored.length === 0) return null;
-                                            const total = scored.reduce((sum, a) => sum + a.score, 0);
-                                            return (
-                                              <div className="grid grid-cols-3 gap-0 items-center px-4 py-3 bg-muted/30 border-t border-border/50">
-                                                <span className="text-sm font-bold text-foreground">Total</span>
-                                                <span />
-                                                <div className="text-right">
-                                                  <span className={`text-sm font-extrabold ${total >= 50 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`}>
-                                                    {total.toFixed(1)}/100
-                                                  </span>
-                                                </div>
-                                              </div>
-                                            );
-                                          })()}
-                                        </div>
-                                      )}
-                                    </td>
-                                  </tr>
-                                </CollapsibleContent>
-                              </>
-                            </Collapsible>
-                          ))
-                        )}
-                      </TableBody>
-                    </Table>
-                  )}
-                </CardContent>
-              </Card>
+                                        </TableCell>
+                                        <TableCell className="text-right font-semibold">
+                                          {assessment.score !== null ? `${contribution}%` : '—'}
+                                        </TableCell>
+                                      </TableRow>
+                                    );
+                                  })}
+                                  <TableRow className="bg-muted/40 font-bold">
+                                    <TableCell colSpan={3}>Total Score</TableCell>
+                                    <TableCell className="text-right text-lg">
+                                      {subject.totalScore}%
+                                    </TableCell>
+                                  </TableRow>
+                                </TableBody>
+                              </Table>
+                            )}
+                          </div>
+                        </CollapsibleContent>
+                      </Card>
+                    </Collapsible>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
-              {/* Academic History */}
-              <AcademicHistory studentId={selectedChild.user_id} studentName={selectedChild.full_name} />
-            </>
-          )}
+          {/* Academic History */}
+          <AcademicHistory studentId={selectedChild.user_id} />
         </>
       )}
     </div>

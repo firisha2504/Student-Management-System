@@ -447,6 +447,24 @@ export const api = {
     });
   },
 
+  // Parent Portal (for logged-in parents)
+  async getMyChildren() {
+    return apiRequest('/parents/me/children');
+  },
+
+  async getChildGrades(studentId: string) {
+    return apiRequest(`/parents/children/${studentId}/grades`);
+  },
+
+  async getChildRanking(studentId: string, filters?: { term?: string; academic_year?: string }) {
+    const params = new URLSearchParams();
+    if (filters?.term) params.append('term', filters.term);
+    if (filters?.academic_year) params.append('academic_year', filters.academic_year);
+    
+    const queryString = params.toString();
+    return apiRequest(`/parents/children/${studentId}/ranking${queryString ? '?' + queryString : ''}`);
+  },
+
   // Teacher Assignments
   async getTeacherAssignments(teacherId: number) {
     return apiRequest(`/teacher-assignments/${teacherId}`);
