@@ -8,6 +8,10 @@
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "init-db": "node src/database/init.js",
+    "clear-data": "node src/database/clear-data.js",
+    "reset-db": "node src/database/reset-database.js",
+    "setup-admin": "node src/database/setup-default-admin.js",
+    "fresh-start": "node src/database/reset-database.js && node src/database/setup-default-admin.js",
     "test-db": "node test-db-connection.js",
     "verify": "node verify-infrastructure.js",
     "quick-start": "node quick-start.js"

@@ -368,7 +368,6 @@ export default function Admin() {
     }
 
     try {
-      console.log('Creating subject with data:', subjectForm);
       await api.createSubject(subjectForm);
       showSuccess("Subject Created", `${subjectForm.subject_name} has been added`);
       setSubjectForm({
