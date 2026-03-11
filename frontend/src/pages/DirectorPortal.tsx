@@ -64,7 +64,7 @@ const CHART_COLORS = [
 const GENDER_COLORS = { male: "hsl(220, 70%, 55%)", female: "hsl(340, 70%, 55%)" };
 
 export default function DirectorPortal() {
-  const { role, user } = useAuth();
+  const { role } = useAuth();
   const { toast } = useToast();
   const [teachers, setTeachers] = useState<UserWithRole[]>([]);
   const [loading, setLoading] = useState(true);

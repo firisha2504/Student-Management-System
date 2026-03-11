@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { History, Award, TrendingUp } from "lucide-react";
+import { History, Award } from "lucide-react";
 import { api } from "@/services/api";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ChevronDown, ChevronUp } from "lucide-react";
@@ -10,18 +10,6 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 interface AcademicHistoryProps {
   studentId: string;
   studentName?: string;
-}
-
-interface YearSummary {
-  academic_year: string;
-  grade_level: number;
-  stream: string | null;
-  total_score: number;
-  average_score: number;
-  rank_position: number;
-  total_students: number;
-  subject_count: number;
-  status: string | null;
 }
 
 interface SubjectResult {

@@ -2,8 +2,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { api } from "@/services/api";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Trophy, Medal, Award, Clock } from "lucide-react";
+import { Trophy, Clock } from "lucide-react";
 
 interface RankingData {
   approved: boolean;
