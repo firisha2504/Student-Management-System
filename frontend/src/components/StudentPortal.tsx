@@ -145,6 +145,15 @@ export default function StudentPortal() {
   const gradedCount = breakdowns.filter(b => b.hasScores).length;
   const progressPercent = subjects.length > 0 ? Math.round((gradedCount / subjects.length) * 100) : 0;
 
+  const overallTotal = breakdowns.reduce((sum, b) => {
+    const scored = b.assessments.filter(a => a.score >= 0);
+    return sum + scored.reduce((s, a) => s + a.score, 0);
+  }, 0);
+  const subjectsWithScores = breakdowns.filter(b => b.assessments.some(a => a.score >= 0));
+  const overallAverage = subjectsWithScores.length > 0
+    ? (overallTotal / subjectsWithScores.length).toFixed(1)
+    : null;
+
   const toggleSubject = (id: number) => {
     setOpenSubjects(prev => {
       const next = new Set(prev);
@@ -186,6 +195,20 @@ export default function StudentPortal() {
             </div>
             <span className="text-sm font-bold">{gradedCount}/{subjects.length} graded</span>
           </div>
+          {overallAverage !== null && (
+            <div className="mt-3 flex items-center gap-2">
+              <span className="text-white/70 text-sm">Overall Average:</span>
+              <span
+                className={`text-base font-extrabold ${
+                  parseFloat(overallAverage) >= 50
+                    ? "text-emerald-300"
+                    : "text-red-300"
+                }`}
+              >
+                {overallAverage} / 100
+              </span>
+            </div>
+          )}
         </div>
       </Card>
 

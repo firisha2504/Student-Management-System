@@ -35,10 +35,13 @@ export default function StudentRegister() {
   const [registering, setRegistering] = useState(false);
   const [successModal, setSuccessModal] = useState(false);
   const [rankingsPublished, setRankingsPublished] = useState(false);
+  const [profileIncomplete, setProfileIncomplete] = useState(false);
 
   useEffect(() => {
-    fetchRegistrationStatus();
-  }, []);
+    if (profile !== undefined) {
+      fetchRegistrationStatus();
+    }
+  }, [profile]);
 
   const fetchRegistrationStatus = async () => {
     setLoading(true);
@@ -47,29 +50,34 @@ export default function StudentRegister() {
       setRegistrationStatus(status);
       
       if (!status.registered) {
+        // Guard: student must have grade_level set in profile
+        if (!profile?.grade_level) {
+          setProfileIncomplete(true);
+          setLoading(false);
+          return;
+        }
+
         // Check if rankings are published for this student's grade
-        if (profile?.grade_level) {
-          try {
-            const approvalStatus = await api.getRankingApprovalStatus({
-              grade_level: profile.grade_level,
-              stream: profile.stream || undefined,
-            });
-            if (!approvalStatus?.approved) {
-              setRankingsPublished(false);
-              setLoading(false);
-              return;
-            }
-            setRankingsPublished(true);
-          } catch {
+        try {
+          const approvalStatus = await api.getRankingApprovalStatus({
+            grade_level: profile.grade_level,
+            stream: profile.stream || undefined,
+          });
+          if (!approvalStatus?.approved) {
             setRankingsPublished(false);
             setLoading(false);
             return;
           }
+          setRankingsPublished(true);
+        } catch {
+          setRankingsPublished(false);
+          setLoading(false);
+          return;
         }
 
         const allSubjects = await api.getAllSubjects({ 
-          grade_level: profile?.grade_level,
-          stream: profile?.stream 
+          grade_level: profile.grade_level,
+          stream: profile.stream || undefined,
         });
         setAvailableCourses(allSubjects.slice(0, 7));
       }
@@ -219,6 +227,22 @@ export default function StudentRegister() {
             </Button>
           </CardContent>
         </Card>
+      </div>
+    );
+  }
+
+  // Profile incomplete — student hasn't set grade_level yet
+  if (!registrationStatus?.registered && profileIncomplete) {
+    return (
+      <div className="max-w-lg mx-auto mt-16 text-center space-y-4">
+        <div className="gradient-primary rounded-full p-5 w-20 h-20 mx-auto flex items-center justify-center">
+          <GraduationCap className="h-10 w-10 text-white" />
+        </div>
+        <h2 className="text-2xl font-bold">Complete Your Profile First</h2>
+        <p className="text-muted-foreground">
+          Please update your profile with your grade level before you can access registration.
+        </p>
+        <p className="text-sm text-muted-foreground">Go to your profile and fill in your grade information.</p>
       </div>
     );
   }
