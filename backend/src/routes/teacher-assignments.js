@@ -91,6 +91,7 @@ router.post('/:teacherId', authenticate, authorize('admin', 'registrar', 'direct
 
     // Insert new subject and grade assignments
     if (subjects && subjects.length > 0 && grades && grades.length > 0) {
+      const seen = new Set();
       const subjectAssignments = [];
       
       for (const subjectId of subjects) {
@@ -102,7 +103,11 @@ router.post('/:teacherId', authenticate, authorize('admin', 'registrar', 'direct
           );
           
           const stream = subjectInfo[0]?.stream || null;
-          subjectAssignments.push([teacherId, subjectId, gradeLevel, stream]);
+          const key = `${subjectId}-${gradeLevel}-${stream}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            subjectAssignments.push([teacherId, subjectId, gradeLevel, stream]);
+          }
         }
       }
 

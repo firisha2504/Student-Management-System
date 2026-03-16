@@ -161,7 +161,8 @@ export default function DirectorPortal() {
 
       setTeachers(withAssignments.map((t: any) => ({
         ...t,
-        assignedSubjects: t._subjectIds.map((id: number) => subjectMap[id]).filter(Boolean),
+        // Deduplicate subject IDs (same subject can appear for multiple grades)
+        assignedSubjects: [...new Set(t._subjectIds as number[])].map((id: number) => subjectMap[id]).filter(Boolean),
       })));
     } catch (error: any) {
       console.error('Failed to fetch teachers:', error);
@@ -275,11 +276,14 @@ export default function DirectorPortal() {
     setAssigningTeacher(teacher);
     try {
       const subjects = await api.getAllSubjects();
-      setAllSubjects(subjects || []);
+      // Normalize IDs to strings to ensure consistent comparison
+      setAllSubjects((subjects || []).map((s: any) => ({ ...s, id: s.id.toString() })));
       
       // Load existing assignments
       const assignments = await api.getTeacherAssignments(parseInt(teacher.user_id));
-      setAssignedSubjectIds(assignments.subjects.map((id: number) => id.toString()));
+      // Deduplicate subject IDs (same subject may appear for multiple grades)
+      const uniqueSubjectIds = [...new Set((assignments.subjects as number[]).map((id: number) => id.toString()))];
+      setAssignedSubjectIds(uniqueSubjectIds);
       setAssignedGradeLevels(assignments.grades || []);
       setAssignedSections(assignments.sections || []);
       setAssignedSubSections(assignments.subSections || []);

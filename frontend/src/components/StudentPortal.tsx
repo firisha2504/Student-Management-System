@@ -49,13 +49,13 @@ export default function StudentPortal() {
   const [openSubjects, setOpenSubjects] = useState<Set<number>>(new Set());
 
   useEffect(() => {
-    if (!user || !profile?.grade_level) return;
+    if (!user) return;
+    if (!profile) return; // wait for profile to load
 
     const fetchData = async () => {
       try {
         setLoading(true);
 
-        // Fetch subjects for student's grade
         const gradeLevel = profile.grade_level;
         if (!gradeLevel) {
           setLoading(false);
@@ -219,7 +219,9 @@ export default function StudentPortal() {
             <p className="text-muted-foreground p-6">Loading...</p>
           ) : subjects.length === 0 ? (
             <p className="text-muted-foreground text-center py-10">
-              No subjects assigned to your grade yet. Please update your profile first.
+              {!profile?.grade_level
+                ? "Please update your profile with your grade level to see your subjects."
+                : "No subjects have been assigned to your grade yet. Please check back later."}
             </p>
           ) : (
             <Table>

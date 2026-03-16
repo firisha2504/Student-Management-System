@@ -219,11 +219,62 @@ export default function StudentRegister() {
 
             {/* Print Button */}
             <Button 
-              onClick={() => window.print()} 
+              onClick={() => {
+                const rows = courses?.map((course, i) => `
+                  <tr>
+                    <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb">${i + 1}</td>
+                    <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb">${course.subject_name}</td>
+                    <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;font-family:monospace">${course.subject_code}</td>
+                    <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:center">${course.credit_hours || 3}</td>
+                    <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb">${course.instructor || 'TBA'}</td>
+                  </tr>`).join('') || '';
+                const html = `<!DOCTYPE html>
+<html><head><title>Registration Slip</title>
+<style>
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:40px;color:#1a1a1a;max-width:800px;margin:0 auto}
+  h1{font-size:20px;margin-bottom:2px}
+  .sub{color:#666;font-size:13px;margin-bottom:20px}
+  .info{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;padding:12px;background:#f9fafb;border-radius:8px}
+  .info-item label{font-size:11px;color:#888;display:block;margin-bottom:2px}
+  .info-item span{font-weight:600;font-size:14px}
+  table{width:100%;border-collapse:collapse;margin-bottom:20px}
+  th{padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;color:#666;border-bottom:2px solid #e5e7eb}
+  th:nth-child(4){text-align:center}
+  .total-row td{font-weight:bold;background:#f9fafb;padding:8px 10px}
+  .sigs{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:24px}
+  .sig-line{border-bottom:2px dashed #ccc;padding-bottom:4px;margin-top:24px}
+  .sig-label{font-size:12px;color:#666;margin-top:4px}
+  .note{font-size:11px;color:#888;font-style:italic;border-top:1px solid #e5e7eb;padding-top:12px;margin-top:12px}
+  .badge{display:inline-block;background:#16a34a;color:white;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600}
+  @media print{body{padding:20px}}
+</style></head><body>
+  <div style="display:flex;justify-content:space-between;align-items:flex-start">
+    <div><h1>Student Registration Slip</h1><p class="sub">Academic Year ${registrationStatus?.academicYear}</p></div>
+    <span class="badge">REGISTERED</span>
+  </div>
+  <div class="info">
+    <div class="info-item"><label>Student Name</label><span>${profile?.full_name || ''}</span></div>
+    <div class="info-item"><label>Gender</label><span style="text-transform:capitalize">${profile?.gender || '—'}</span></div>
+  </div>
+  <table>
+    <thead><tr><th>#</th><th>Course Title</th><th>Course Code</th><th style="text-align:center">Cr.Hr</th><th>Instructor</th></tr></thead>
+    <tbody>${rows}
+      <tr class="total-row"><td colspan="3" style="text-align:right;padding:8px 10px">Total</td><td style="text-align:center;padding:8px 10px">${totalCreditHours}</td><td style="padding:8px 10px"></td></tr>
+    </tbody>
+  </table>
+  <div class="sigs">
+    <div><div class="sig-line"></div><p class="sig-label">Advisor Name and Signature</p></div>
+    <div><div class="sig-line"></div><p class="sig-label">Registrar Name and Signature</p></div>
+  </div>
+  <p class="note">This registration slip should not be signed by advisors without checking total credit hours and prerequisite courses.</p>
+</body></html>`;
+                const w = window.open('', '_blank');
+                if (w) { w.document.write(html); w.document.close(); w.focus(); setTimeout(() => w.print(), 300); }
+              }}
               className="w-full gradient-primary border-0 text-white"
             >
               <FileText className="h-4 w-4 mr-2" />
-              Print Registration Slip
+              Print / Download Registration Slip
             </Button>
           </CardContent>
         </Card>
