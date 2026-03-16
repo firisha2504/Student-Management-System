@@ -12,6 +12,10 @@ interface Stats {
   totalGrades: number;
   avgScore: number;
   subjectAverages: { name: string; average: number }[];
+  // teacher-specific
+  assignedSubjects?: number;
+  assignedGrades?: number[];
+  assignedSections?: string[];
 }
 
 export default function Home() {
@@ -36,6 +40,18 @@ export default function Home() {
             totalGrades: data.totalGrades || 0,
             avgScore: data.avgScore || 0,
             subjectAverages: []
+          });
+        } else if (role === "teacher") {
+          const data = await api.getMyAssignments();
+          setStats({
+            totalStudents: 0,
+            totalTeachers: 0,
+            totalGrades: 0,
+            avgScore: 0,
+            subjectAverages: [],
+            assignedSubjects: data.subjects?.length || 0,
+            assignedGrades: data.grades || [],
+            assignedSections: data.sections || [],
           });
         } else if (["admin", "director", "registrar"].includes(role || "")) {
           // Admin, director, registrar get full dashboard stats
@@ -111,6 +127,29 @@ export default function Home() {
                 <div>
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{label}</p>
                   <p className="text-2xl font-extrabold text-foreground">{value}</p>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Teacher stats */}
+      {!loading && stats && role === "teacher" && (
+        <div className="grid gap-4 grid-cols-2 lg:grid-cols-3">
+          {[
+            { label: "Subjects Assigned", value: stats.assignedSubjects ?? 0, icon: BookOpen, gradient: "gradient-primary" },
+            { label: "Grades Assigned", value: stats.assignedGrades?.map(g => `G${g}`).join(", ") || "—", icon: GraduationCap, gradient: "gradient-accent" },
+            { label: "Sections Assigned", value: stats.assignedSections?.length ? stats.assignedSections.map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(", ") : "—", icon: Users, gradient: "gradient-warm" },
+          ].map(({ label, value, icon: Icon, gradient }) => (
+            <Card key={label} className="border-0 shadow-md hover:shadow-lg transition-shadow">
+              <CardContent className="pt-6 pb-5 flex items-center gap-4">
+                <div className={`${gradient} rounded-xl p-3 shadow-lg`}>
+                  <Icon className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{label}</p>
+                  <p className="text-xl font-extrabold text-foreground">{value}</p>
                 </div>
               </CardContent>
             </Card>
