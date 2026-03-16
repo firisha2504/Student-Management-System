@@ -34,6 +34,7 @@ export default function StudentRegister() {
   const [availableCourses, setAvailableCourses] = useState<Course[]>([]);
   const [registering, setRegistering] = useState(false);
   const [successModal, setSuccessModal] = useState(false);
+  const [rankingsPublished, setRankingsPublished] = useState(false);
 
   useEffect(() => {
     fetchRegistrationStatus();
@@ -46,14 +47,31 @@ export default function StudentRegister() {
       setRegistrationStatus(status);
       
       if (!status.registered) {
-        // Fetch available courses if not registered yet
-        await api.getAvailableCourses();
-        // Get subjects with teacher assignments for student's grade
+        // Check if rankings are published for this student's grade
+        if (profile?.grade_level) {
+          try {
+            const approvalStatus = await api.getRankingApprovalStatus({
+              grade_level: profile.grade_level,
+              stream: profile.stream || undefined,
+            });
+            if (!approvalStatus?.approved) {
+              setRankingsPublished(false);
+              setLoading(false);
+              return;
+            }
+            setRankingsPublished(true);
+          } catch {
+            setRankingsPublished(false);
+            setLoading(false);
+            return;
+          }
+        }
+
         const allSubjects = await api.getAllSubjects({ 
           grade_level: profile?.grade_level,
           stream: profile?.stream 
         });
-        setAvailableCourses(allSubjects.slice(0, 7)); // Take first 7 courses
+        setAvailableCourses(allSubjects.slice(0, 7));
       }
     } catch (error: any) {
       toast({ title: "Error", description: error.message || "Failed to fetch registration status", variant: "destructive" });
@@ -201,6 +219,22 @@ export default function StudentRegister() {
             </Button>
           </CardContent>
         </Card>
+      </div>
+    );
+  }
+
+  // Rankings not published yet — block registration
+  if (!registrationStatus?.registered && !rankingsPublished) {
+    return (
+      <div className="max-w-lg mx-auto mt-16 text-center space-y-4">
+        <div className="gradient-primary rounded-full p-5 w-20 h-20 mx-auto flex items-center justify-center">
+          <GraduationCap className="h-10 w-10 text-white" />
+        </div>
+        <h2 className="text-2xl font-bold">Registration Not Open Yet</h2>
+        <p className="text-muted-foreground">
+          Your grade rankings have not been published yet. Registration will open once the director approves and publishes the rankings for your grade.
+        </p>
+        <p className="text-sm text-muted-foreground">Please check back later.</p>
       </div>
     );
   }

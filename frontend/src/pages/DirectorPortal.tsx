@@ -27,6 +27,8 @@ interface UserWithRole {
   id_number: string;
   is_active: boolean;
   role: string;
+  assignedSubjects?: string[];
+  assignedGrades?: number[];
 }
 
 interface RankingEntry {
@@ -117,13 +119,49 @@ export default function DirectorPortal() {
     try {
       const data = await api.getAllUsers();
       const teacherUsers = data.filter((u: any) => u.role === 'teacher');
-      setTeachers(teacherUsers.map((u: any) => ({
-        user_id: u.user_id,
-        full_name: u.full_name,
-        username: u.username,
-        id_number: u.id_number || 'N/A',
-        is_active: u.is_active,
-        role: "teacher",
+
+      // Fetch assignments for all teachers in parallel
+      const withAssignments = await Promise.all(
+        teacherUsers.map(async (u: any) => {
+          try {
+            const a = await api.getTeacherAssignments(parseInt(u.user_id));
+            const subjectNames = (a.subjects || []).map((id: number) => {
+              // We'll resolve names after fetching subjects
+              return id;
+            });
+            return {
+              user_id: u.user_id,
+              full_name: u.full_name,
+              username: u.username,
+              id_number: u.id_number || 'N/A',
+              is_active: u.is_active,
+              role: "teacher",
+              _subjectIds: a.subjects || [],
+              assignedGrades: a.grades || [],
+            };
+          } catch {
+            return {
+              user_id: u.user_id,
+              full_name: u.full_name,
+              username: u.username,
+              id_number: u.id_number || 'N/A',
+              is_active: u.is_active,
+              role: "teacher",
+              _subjectIds: [],
+              assignedGrades: [],
+            };
+          }
+        })
+      );
+
+      // Fetch all subjects once to resolve names
+      const allSubs = await api.getAllSubjects();
+      const subjectMap: Record<number, string> = {};
+      allSubs.forEach((s: any) => { subjectMap[s.id] = s.subject_name; });
+
+      setTeachers(withAssignments.map((t: any) => ({
+        ...t,
+        assignedSubjects: t._subjectIds.map((id: number) => subjectMap[id]).filter(Boolean),
       })));
     } catch (error: any) {
       console.error('Failed to fetch teachers:', error);
@@ -273,6 +311,7 @@ export default function DirectorPortal() {
         description: `Updated assignments for ${assigningTeacher.full_name}` 
       });
       setAssignDialogOpen(false);
+      await fetchTeachers();
     } catch (error: any) {
       toast({ title: "Error", description: error.message || "Failed to save assignments", variant: "destructive" });
     }
@@ -291,7 +330,7 @@ export default function DirectorPortal() {
       setRankings(data || []);
 
       const approvalStatus = await api.getRankingApprovalStatus(filters);
-      setRankingsPublished(approvalStatus?.published || false);
+      setRankingsPublished(approvalStatus?.approved || false);
     } catch (err: any) {
       toast({ title: "Error", description: err.message || "Failed to fetch rankings", variant: "destructive" });
     }
@@ -370,8 +409,9 @@ export default function DirectorPortal() {
                       <TableHeader>
                         <TableRow className="bg-muted/20">
                           <TableHead>Name</TableHead>
-                          <TableHead>Username</TableHead>
                           <TableHead>ID</TableHead>
+                          <TableHead>Grades</TableHead>
+                          <TableHead>Subjects</TableHead>
                           <TableHead>Status</TableHead>
                           <TableHead>Action</TableHead>
                         </TableRow>
@@ -379,9 +419,21 @@ export default function DirectorPortal() {
                       <TableBody>
                         {teachers.map(t => (
                           <TableRow key={t.user_id} className="hover:bg-muted/30">
-                            <TableCell className="font-semibold">{t.full_name}</TableCell>
-                            <TableCell className="text-muted-foreground">{t.username}</TableCell>
+                            <TableCell>
+                              <p className="font-semibold">{t.full_name}</p>
+                              <p className="text-xs text-muted-foreground font-mono">{t.username}</p>
+                            </TableCell>
                             <TableCell className="font-mono text-sm">{t.id_number}</TableCell>
+                            <TableCell>
+                              {t.assignedGrades && t.assignedGrades.length > 0
+                                ? <div className="flex flex-wrap gap-1">{t.assignedGrades.sort().map(g => <Badge key={g} variant="outline" className="text-xs">G{g}</Badge>)}</div>
+                                : <span className="text-xs text-muted-foreground">—</span>}
+                            </TableCell>
+                            <TableCell className="max-w-[200px]">
+                              {t.assignedSubjects && t.assignedSubjects.length > 0
+                                ? <div className="flex flex-wrap gap-1">{t.assignedSubjects.map(s => <Badge key={s} variant="secondary" className="text-xs">{s}</Badge>)}</div>
+                                : <span className="text-xs text-muted-foreground">None assigned</span>}
+                            </TableCell>
                             <TableCell>
                               <Badge variant={t.is_active ? "default" : "destructive"} className={cn("text-xs", t.is_active && "gradient-accent border-0 text-white")}>
                                 {t.is_active ? "Active" : "Inactive"}
@@ -389,7 +441,7 @@ export default function DirectorPortal() {
                             </TableCell>
                             <TableCell>
                               <Button size="sm" className="rounded-lg text-xs gradient-primary border-0 text-white" onClick={() => openAssignDialog(t)}>
-                                Assign
+                                {(t.assignedSubjects && t.assignedSubjects.length > 0) || (t.assignedGrades && t.assignedGrades.length > 0) ? "Edit" : "Assign"}
                               </Button>
                             </TableCell>
                           </TableRow>
