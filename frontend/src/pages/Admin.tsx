@@ -578,7 +578,7 @@ export default function Admin() {
                           <TableRow key={u.user_id} className="hover:bg-muted/30">
                             <TableCell className="font-semibold">{u.full_name}</TableCell>
                             <TableCell className="text-muted-foreground">{u.username}</TableCell>
-                            <TableCell className="font-mono text-sm">{String(index + 1).padStart(4, '0')}</TableCell>
+                            <TableCell className="font-mono text-sm">{u.id_number}</TableCell>
                             <TableCell>
                               <Badge variant="outline" className="text-xs capitalize">{u.role}</Badge>
                             </TableCell>
@@ -680,7 +680,7 @@ export default function Admin() {
                         </Select>
                         <div className="flex items-center flex-1">
                           <span className="bg-muted px-2.5 py-2 rounded-l-xl border border-r-0 border-input text-sm font-mono font-semibold text-muted-foreground">
-                            ID
+                            {{ student: 'MJ', teacher: 'MJT', registrar: 'MJR', director: 'MJD', parent: 'MJP', admin: 'MJA' }[createRole] || 'MJ'}
                           </span>
                           <Input 
                             value={row.idNumber} 

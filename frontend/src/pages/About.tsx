@@ -344,7 +344,7 @@ export default function About() {
 
       {/* Success Modal */}
       <Dialog open={successModal.open} onOpenChange={(open) => setSuccessModal(prev => ({ ...prev, open }))}>
-        <DialogContent className="sm:max-w-sm text-center">
+        <DialogContent aria-describedby={undefined} className="sm:max-w-sm text-center">
           <DialogHeader className="items-center">
             <div className="mx-auto mb-2 rounded-full bg-green-100 dark:bg-green-900/30 p-3">
               <CheckCircle2 className="h-8 w-8 text-green-600 dark:text-green-400" />

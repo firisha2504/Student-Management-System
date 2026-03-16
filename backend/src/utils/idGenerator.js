@@ -22,25 +22,23 @@ export async function generateUserId(role) {
     throw new Error(`Invalid role: ${role}`);
   }
 
-  // Get the last user with this prefix
+  // Get the last generated ID for this prefix from users table
   const [lastUsers] = await pool.query(
-    `SELECT username FROM users 
-     WHERE username LIKE ? 
-     ORDER BY username DESC 
+    `SELECT u.username FROM users u
+     INNER JOIN user_roles r ON u.id = r.user_id
+     WHERE r.role = ? AND u.username LIKE ?
+     ORDER BY u.id DESC
      LIMIT 1`,
-    [`${prefix}%`]
+    [role, `%.${prefix}%`]
   );
 
   let nextNumber = 1;
 
   if (lastUsers.length > 0) {
     const lastUsername = lastUsers[0].username;
-    // Extract number from username (e.g., "MJ001" -> "001")
-    const numberPart = lastUsername.replace(prefix, '');
-    const lastNumber = parseInt(numberPart, 10);
-    
-    if (!isNaN(lastNumber)) {
-      nextNumber = lastNumber + 1;
+    const match = lastUsername.match(new RegExp(`${prefix}(\\d+)$`));
+    if (match) {
+      nextNumber = parseInt(match[1], 10) + 1;
     }
   }
 

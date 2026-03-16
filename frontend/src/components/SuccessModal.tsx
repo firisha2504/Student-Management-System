@@ -40,7 +40,7 @@ export default function SuccessModal({ open, onClose, title, description, creden
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="sm:max-w-md text-center p-8 max-h-[80vh] overflow-y-auto">
+      <DialogContent aria-describedby={undefined} className="sm:max-w-md text-center p-8 max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <VisuallyHidden>
             <DialogTitle>{title}</DialogTitle>

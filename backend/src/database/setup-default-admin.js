@@ -1,4 +1,5 @@
 import pool from '../config/database.js';
+import bcrypt from 'bcryptjs';
 
 /**
  * Setup default admin user and system settings
@@ -15,20 +16,29 @@ async function setupDefaultAdmin() {
     
     // 1. Create default admin user
     console.log('👤 Creating default admin user...');
+    const passwordHash = await bcrypt.hash('admin123', 10);
     const [adminResult] = await connection.query(
-      `INSERT INTO users (username, password, role, id_number, is_active) 
-       VALUES (?, ?, 'admin', ?, TRUE)`,
-      ['MJA001', 'admin123', 'MJA001']
+      `INSERT INTO users (username, email, password_hash) 
+       VALUES (?, ?, ?)`,
+      ['MJA001', 'admin@school.com', passwordHash]
     );
     const adminUserId = adminResult.insertId;
     console.log(`✅ Admin user created (ID: ${adminUserId})`);
     
+    // 2. Assign admin role
+    console.log('🔑 Assigning admin role...');
+    await connection.query(
+      `INSERT INTO user_roles (user_id, role) VALUES (?, 'admin')`,
+      [adminUserId]
+    );
+    console.log('✅ Admin role assigned');
+    
     // 2. Create admin profile
     console.log('📝 Creating admin profile...');
     await connection.query(
-      `INSERT INTO profiles (user_id, full_name, email, phone) 
-       VALUES (?, ?, ?, ?)`,
-      [adminUserId, 'System Administrator', 'admin@school.com', null]
+      `INSERT INTO profiles (user_id, full_name, phone) 
+       VALUES (?, ?, ?)`,
+      [adminUserId, 'System Administrator', null]
     );
     console.log('✅ Admin profile created');
     
@@ -57,9 +67,9 @@ async function setupDefaultAdmin() {
     
     // 4. Log the credentials
     await connection.query(
-      `INSERT INTO credentials_log (user_id, username, password, created_by) 
-       VALUES (?, ?, ?, ?)`,
-      [adminUserId, 'MJA001', 'admin123', adminUserId]
+      `INSERT INTO credentials_log (user_id, full_name, username, password, role) 
+       VALUES (?, ?, ?, ?, ?)`,
+      [adminUserId, 'System Administrator', 'MJA001', 'admin123', 'admin']
     );
     console.log('✅ Credentials logged');
     

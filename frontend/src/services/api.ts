@@ -49,8 +49,11 @@ export const api = {
   },
   
   async logout() {
-    localStorage.removeItem('auth_token');
-    return apiRequest('/auth/logout', { method: 'POST' });
+    try {
+      await apiRequest('/auth/logout', { method: 'POST' });
+    } finally {
+      localStorage.removeItem('auth_token');
+    }
   },
   
   async getProfile() {
@@ -107,6 +110,10 @@ export const api = {
   },
 
   // Admin - Users
+  async getNextId(role: string) {
+    return apiRequest(`/users/next-id/${role}`);
+  },
+
   async getAllUsers() {
     return apiRequest('/users');
   },

@@ -7,6 +7,17 @@ import { generateUserId } from '../utils/idGenerator.js';
 
 const router = express.Router();
 
+// Get next available ID for a role
+router.get('/next-id/:role', authenticate, async (req, res) => {
+  try {
+    const { role } = req.params;
+    const nextId = await generateUserId(role);
+    res.json({ nextId });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
 // Get all users (admin, registrar, director)
 router.get('/', authenticate, authorize('admin', 'registrar', 'director'), async (req, res) => {
   try {
@@ -16,20 +27,21 @@ router.get('/', authenticate, authorize('admin', 'registrar', 'director'), async
         p.full_name, p.phone, p.is_active, p.gender, p.profile_image,
         r.role,
         sp.grade_level, sp.stream, sp.section, sp.sub_section,
+        sp.admission_number,
         COUNT(DISTINCT ps.parent_id) as parent_count
       FROM users u
       LEFT JOIN profiles p ON u.id = p.user_id
       LEFT JOIN user_roles r ON u.id = r.user_id
       LEFT JOIN student_profiles sp ON u.id = sp.user_id
       LEFT JOIN parent_students ps ON u.id = ps.student_id
-      GROUP BY u.id, u.username, u.email, u.created_at, p.full_name, p.phone, p.is_active, p.gender, p.profile_image, r.role, sp.grade_level, sp.stream, sp.section, sp.sub_section
+      GROUP BY u.id, u.username, u.email, u.created_at, p.full_name, p.phone, p.is_active, p.gender, p.profile_image, r.role, sp.grade_level, sp.stream, sp.section, sp.sub_section, sp.admission_number
       ORDER BY u.created_at DESC
     `);
 
-    // Format username as id_number for compatibility
+    // id_number: use admission_number for students, otherwise derive from username
     const formattedUsers = users.map(user => ({
       ...user,
-      id_number: user.username
+      id_number: user.admission_number || user.username
     }));
 
     res.json(formattedUsers);
@@ -53,14 +65,14 @@ router.post('/', authenticate, authorize('admin', 'registrar'), [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { email, full_name, role, phone, address } = req.body;
+    const { email, full_name, role, phone, address, gender } = req.body;
 
     await connection.beginTransaction();
 
     // Generate ID based on role (e.g., MJ001, MJT001)
     const generatedId = await generateUserId(role);
     
-    // Generate username as firstname.lastname.id
+    // Generate username as firstname.lastname.ID (e.g., john.doe.MJ001)
     const nameParts = full_name.trim().toLowerCase().split(/\s+/);
     const username = nameParts.join('.') + '.' + generatedId;
     
@@ -95,8 +107,8 @@ router.post('/', authenticate, authorize('admin', 'registrar'), [
 
     // Create profile
     await connection.query(
-      'INSERT INTO profiles (user_id, full_name, phone, address) VALUES (?, ?, ?, ?)',
-      [userId, full_name, phone || null, address || null]
+      'INSERT INTO profiles (user_id, full_name, phone, address, gender) VALUES (?, ?, ?, ?, ?)',
+      [userId, full_name, phone || null, address || null, gender || null]
     );
 
     // Create student_profiles record if role is student
@@ -173,9 +185,6 @@ router.delete('/:id', authenticate, authorize('admin'), async (req, res) => {
   }
 });
 
-export default router;
-
-
 // Get credentials log (admin only)
 router.get('/credentials-log', authenticate, authorize('admin'), async (req, res) => {
   try {
@@ -198,3 +207,5 @@ router.get('/credentials-log', authenticate, authorize('admin'), async (req, res
     res.status(500).json({ error: 'Failed to fetch credentials log' });
   }
 });
+
+export default router;

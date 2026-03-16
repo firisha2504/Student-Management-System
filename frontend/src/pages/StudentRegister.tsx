@@ -319,7 +319,7 @@ export default function StudentRegister() {
           fetchRegistrationStatus();
         }
       }}>
-        <DialogContent className="sm:max-w-md text-center">
+        <DialogContent aria-describedby={undefined} className="sm:max-w-md text-center">
           <DialogHeader className="items-center">
             <div className="mx-auto mb-4 rounded-full bg-green-100 dark:bg-green-900/30 p-4">
               <CheckCircle2 className="h-12 w-12 text-green-600 dark:text-green-400" />

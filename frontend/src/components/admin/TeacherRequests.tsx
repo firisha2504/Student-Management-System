@@ -243,7 +243,7 @@ export default function TeacherRequests({ onUserCreated }: Props) {
 
       {/* View Request Dialog */}
       <Dialog open={!!viewingRequest} onOpenChange={() => setViewingRequest(null)}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent aria-describedby={undefined} className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Request Details</DialogTitle>
           </DialogHeader>
@@ -369,7 +369,7 @@ export default function TeacherRequests({ onUserCreated }: Props) {
 
       {/* Credentials Dialog */}
       <Dialog open={!!credentialsDialog} onOpenChange={() => setCredentialsDialog(null)}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent aria-describedby={undefined} className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Teacher Account Created</DialogTitle>
           </DialogHeader>

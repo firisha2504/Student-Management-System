@@ -822,7 +822,7 @@ export default function DirectorPortal() {
 
       {/* Assign Subjects Dialog */}
       <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent aria-describedby={undefined} className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Assign to {assigningTeacher?.full_name}</DialogTitle>
             <p className="text-xs text-muted-foreground">Configure grades, sections, and subjects</p>

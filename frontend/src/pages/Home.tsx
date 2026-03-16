@@ -37,7 +37,7 @@ export default function Home() {
             avgScore: data.avgScore || 0,
             subjectAverages: []
           });
-        } else {
+        } else if (["admin", "director", "registrar"].includes(role || "")) {
           // Admin, director, registrar get full dashboard stats
           const data = await api.getDashboardStats();
           

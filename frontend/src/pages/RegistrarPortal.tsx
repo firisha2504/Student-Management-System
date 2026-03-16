@@ -53,6 +53,7 @@ export default function RegistrarPortal() {
 
   // Create student form
   const [userRows, setUserRows] = useState<{ fullName: string; idNumber: string; gender: string }[]>([{ fullName: "", idNumber: "", gender: "" }]);
+  const [nextStudentNum, setNextStudentNum] = useState<number>(1);
   const [creating, setCreating] = useState(false);
   const [successModal, setSuccessModal] = useState<{ title: string; description?: string; credentials?: { name: string; username: string; password: string }[] } | null>(null);
 
@@ -166,6 +167,16 @@ export default function RegistrarPortal() {
 
   useEffect(() => { fetchStudents(); }, []);
 
+  useEffect(() => {
+    if (activeSection === 'register') {
+      api.getNextId('student').then(data => {
+        const num = parseInt(data.nextId.replace('MJ', ''), 10);
+        setNextStudentNum(num);
+        setUserRows([{ fullName: "", idNumber: String(num).padStart(3, '0'), gender: "" }]);
+      }).catch(() => {});
+    }
+  }, [activeSection]);
+
   if (role !== "registrar") return <p className="text-destructive">Access denied.</p>;
 
   const filtered = students.filter(s => {
@@ -176,14 +187,17 @@ export default function RegistrarPortal() {
     return true;
   });
 
-  const addUserRow = () => setUserRows([...userRows, { fullName: "", idNumber: "", gender: "" }]);
+  const addUserRow = () => {
+    const nextNum = nextStudentNum + userRows.length;
+    setUserRows([...userRows, { fullName: "", idNumber: String(nextNum).padStart(3, '0'), gender: "" }]);
+  };
   const removeUserRow = (i: number) => setUserRows(userRows.filter((_, idx) => idx !== i));
   const updateUserRow = (i: number, field: "fullName" | "idNumber" | "gender", value: string) => {
     const updated = [...userRows]; updated[i][field] = value; setUserRows(updated);
   };
 
   const handleCreateStudents = async () => {
-    const validRows = userRows.filter(r => r.fullName.trim() && r.idNumber.trim());
+    const validRows = userRows.filter(r => r.fullName.trim());
     if (validRows.length === 0) { 
       toast({ title: "Error", description: "Fill at least one student's name and ID.", variant: "destructive" }); 
       return; 
@@ -540,7 +554,7 @@ export default function RegistrarPortal() {
                         </Select>
                         <div className="flex items-center flex-1">
                           <span className="bg-muted px-2.5 py-2 rounded-l-xl border border-r-0 border-input text-sm font-mono font-semibold text-muted-foreground">MJ</span>
-                          <Input value={row.idNumber} onChange={e => updateUserRow(i, "idNumber", e.target.value.replace(/\D/g, ""))} placeholder="001" className="rounded-l-none rounded-r-xl font-mono" />
+                          <Input value={row.idNumber} readOnly placeholder="001" className="rounded-l-none rounded-r-xl font-mono bg-muted/50 cursor-not-allowed" />
                         </div>
                         {userRows.length > 1 && <Button variant="ghost" size="icon" onClick={() => removeUserRow(i)} className="shrink-0 text-destructive rounded-xl">✕</Button>}
                       </div>
@@ -550,7 +564,7 @@ export default function RegistrarPortal() {
                 </div>
                 <Button onClick={handleCreateStudents} disabled={creating} className="w-full rounded-xl gradient-primary border-0 text-white h-11 font-semibold">
                   <UserPlus className="h-4 w-4 mr-2" />
-                  {creating ? "Creating..." : `Create ${userRows.filter(r => r.fullName.trim() && r.idNumber.trim()).length} Student(s)`}
+                  {creating ? "Creating..." : `Create ${userRows.filter(r => r.fullName.trim()).length} Student(s)`}
                 </Button>
                 <p className="text-xs text-muted-foreground text-center">Credentials auto-generated: Username = firstname.lastname.id, Password = pass + ID</p>
               </CardContent>
@@ -694,7 +708,7 @@ export default function RegistrarPortal() {
 
       {/* Edit Student Dialog */}
       <Dialog open={!!editStudent} onOpenChange={(open) => !open && setEditStudent(null)}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent aria-describedby={undefined} className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Edit Student: {editStudent?.full_name}</DialogTitle>
           </DialogHeader>
@@ -767,7 +781,7 @@ export default function RegistrarPortal() {
 
       {/* Parent Linking Dialog */}
       <Dialog open={linkDialogOpen} onOpenChange={setLinkDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent aria-describedby={undefined} className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Link Parent to {linkStudent?.full_name}</DialogTitle>
           </DialogHeader>
