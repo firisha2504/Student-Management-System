@@ -17,48 +17,7 @@ router.get('/me', authenticate, authorize('teacher'), async (req, res) => {
 
     // Get assigned grades
     const [grades] = await pool.query(
-      'SELECT DISTINCT grade_level FROM teacher_subjects WHERE teacher_id = ?',
-      [teacherId]
-    );
-
-    // Get assigned sections
-    const [sections] = await pool.query(
-      'SELECT section FROM teacher_sections WHERE teacher_id = ?',
-      [teacherId]
-    );
-
-    // Get assigned sub-sections
-    const [subSections] = await pool.query(
-      'SELECT sub_section FROM teacher_sub_sections WHERE teacher_id = ?',
-      [teacherId]
-    );
-
-    res.json({
-      subjects: subjects.map(s => s.subject_id),
-      grades: grades.map(g => g.grade_level),
-      sections: sections.map(s => s.section),
-      subSections: subSections.map(s => s.sub_section)
-    });
-  } catch (error) {
-    console.error('Get my assignments error:', error);
-    res.status(500).json({ error: 'Failed to fetch assignments' });
-  }
-});
-
-// Get teacher assignments
-router.get('/:teacherId', authenticate, authorize('admin', 'registrar', 'director'), async (req, res) => {
-  try {
-    const { teacherId } = req.params;
-
-    // Get assigned subjects
-    const [subjects] = await pool.query(
-      'SELECT subject_id FROM teacher_subjects WHERE teacher_id = ?',
-      [teacherId]
-    );
-
-    // Get assigned grades
-    const [grades] = await pool.query(
-      'SELECT DISTINCT grade_level FROM teacher_subjects WHERE teacher_id = ?',
+      'SELECT grade_level FROM teacher_grades WHERE teacher_id = ?',
       [teacherId]
     );
 
@@ -86,6 +45,28 @@ router.get('/:teacherId', authenticate, authorize('admin', 'registrar', 'directo
   }
 });
 
+// Get teacher assignments (for admin/director)
+router.get('/:teacherId', authenticate, authorize('admin', 'registrar', 'director'), async (req, res) => {
+  try {
+    const { teacherId } = req.params;
+
+    const [subjects] = await pool.query('SELECT subject_id FROM teacher_subjects WHERE teacher_id = ?', [teacherId]);
+    const [grades] = await pool.query('SELECT grade_level FROM teacher_grades WHERE teacher_id = ?', [teacherId]);
+    const [sections] = await pool.query('SELECT section FROM teacher_sections WHERE teacher_id = ?', [teacherId]);
+    const [subSections] = await pool.query('SELECT sub_section FROM teacher_sub_sections WHERE teacher_id = ?', [teacherId]);
+
+    res.json({
+      subjects: subjects.map(s => s.subject_id),
+      grades: grades.map(g => g.grade_level),
+      sections: sections.map(s => s.section),
+      subSections: subSections.map(s => s.sub_section)
+    });
+  } catch (error) {
+    console.error('Get teacher assignments error:', error);
+    res.status(500).json({ error: 'Failed to fetch teacher assignments' });
+  }
+});
+
 // Save teacher assignments
 router.post('/:teacherId', authenticate, authorize('admin', 'registrar', 'director'), async (req, res) => {
   const connection = await pool.getConnection();
@@ -97,18 +78,16 @@ router.post('/:teacherId', authenticate, authorize('admin', 'registrar', 'direct
     await connection.beginTransaction();
 
     // Delete existing assignments
-    await connection.query(
-      'DELETE FROM teacher_subjects WHERE teacher_id = ?',
-      [teacherId]
-    );
-    await connection.query(
-      'DELETE FROM teacher_sections WHERE teacher_id = ?',
-      [teacherId]
-    );
-    await connection.query(
-      'DELETE FROM teacher_sub_sections WHERE teacher_id = ?',
-      [teacherId]
-    );
+    await connection.query('DELETE FROM teacher_subjects WHERE teacher_id = ?', [teacherId]);
+    await connection.query('DELETE FROM teacher_sections WHERE teacher_id = ?', [teacherId]);
+    await connection.query('DELETE FROM teacher_sub_sections WHERE teacher_id = ?', [teacherId]);
+    await connection.query('DELETE FROM teacher_grades WHERE teacher_id = ?', [teacherId]);
+
+    // Save grade assignments independently
+    if (grades && grades.length > 0) {
+      const gradeAssignments = grades.map(g => [teacherId, g]);
+      await connection.query('INSERT INTO teacher_grades (teacher_id, grade_level) VALUES ?', [gradeAssignments]);
+    }
 
     // Insert new subject and grade assignments
     if (subjects && subjects.length > 0 && grades && grades.length > 0) {

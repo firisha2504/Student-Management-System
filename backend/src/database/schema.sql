@@ -145,6 +145,16 @@ CREATE TABLE teacher_sub_sections (
   INDEX idx_teacher_id (teacher_id)
 );
 
+-- Teacher grade assignments (independent of subjects)
+CREATE TABLE teacher_grades (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  teacher_id INT NOT NULL,
+  grade_level INT NOT NULL,
+  FOREIGN KEY (teacher_id) REFERENCES users(id) ON DELETE CASCADE,
+  UNIQUE KEY unique_teacher_grade (teacher_id, grade_level),
+  INDEX idx_teacher_id (teacher_id)
+);
+
 -- Teacher requests (for new teacher registration)
 CREATE TABLE teacher_requests (
   id INT PRIMARY KEY AUTO_INCREMENT,
