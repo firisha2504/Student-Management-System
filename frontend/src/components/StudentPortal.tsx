@@ -42,25 +42,30 @@ interface SubjectBreakdown {
 }
 
 export default function StudentPortal() {
-  const { user, profile } = useAuth();
+  const { user, profile, loading: authLoading } = useAuth();
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [breakdowns, setBreakdowns] = useState<SubjectBreakdown[]>([]);
   const [loading, setLoading] = useState(true);
   const [openSubjects, setOpenSubjects] = useState<Set<number>>(new Set());
 
   useEffect(() => {
-    if (!user) return;
-    if (!profile) return; // wait for profile to load
+    // Wait for auth to finish loading
+    if (authLoading) return;
+    // Auth done but no user (shouldn't happen on protected route)
+    if (!user) { setLoading(false); return; }
+    // Profile loaded but no grade_level — stop loading, show message
+    if (profile !== null && !profile?.grade_level) {
+      setLoading(false);
+      return;
+    }
+    // Profile still null (loading from server) — keep waiting
+    if (profile === null) return;
 
     const fetchData = async () => {
       try {
         setLoading(true);
 
-        const gradeLevel = profile.grade_level;
-        if (!gradeLevel) {
-          setLoading(false);
-          return;
-        }
+        const gradeLevel = profile.grade_level!;
 
         const filters: any = { grade_level: gradeLevel };
         if (gradeLevel >= 11 && profile.stream) {
@@ -140,7 +145,7 @@ export default function StudentPortal() {
     };
 
     fetchData();
-  }, [user, profile]);
+  }, [user, profile, authLoading]);
 
   const gradedCount = breakdowns.filter(b => b.hasScores).length;
   const progressPercent = subjects.length > 0 ? Math.round((gradedCount / subjects.length) * 100) : 0;
