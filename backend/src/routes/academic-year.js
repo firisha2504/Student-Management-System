@@ -5,6 +5,54 @@ import { authenticate, authorize } from '../middleware/auth.js';
 
 const router = express.Router();
 
+// Get current academic year and term from system settings
+router.get('/current', authenticate, async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      "SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ('current_academic_year', 'current_term')"
+    );
+    const settings = {};
+    rows.forEach((r) => { settings[r.setting_key] = r.setting_value; });
+    res.json({
+      academic_year: settings['current_academic_year'] || null,
+      term: settings['current_term'] || null,
+    });
+  } catch (error) {
+    console.error('Get current academic year error:', error);
+    res.status(500).json({ error: 'Failed to fetch current academic year' });
+  }
+});
+
+// Update current academic year / term in system settings
+router.patch('/current', authenticate, authorize('registrar', 'admin'), async (req, res) => {
+  try {
+    const { academic_year, term } = req.body;
+
+    // Validate format only if non-empty
+    if (academic_year && !/^\d{4}-\d{4}$/.test(academic_year)) {
+      return res.status(400).json({ error: 'Invalid academic_year format. Use YYYY-YYYY (e.g. 2025-2026)' });
+    }
+
+    if (academic_year !== undefined) {
+      await pool.query(
+        "INSERT INTO system_settings (setting_key, setting_value) VALUES ('current_academic_year', ?) ON DUPLICATE KEY UPDATE setting_value = ?",
+        [academic_year, academic_year]
+      );
+    }
+    if (term !== undefined) {
+      await pool.query(
+        "INSERT INTO system_settings (setting_key, setting_value) VALUES ('current_term', ?) ON DUPLICATE KEY UPDATE setting_value = ?",
+        [term, term]
+      );
+    }
+
+    res.json({ message: 'Settings updated successfully' });
+  } catch (error) {
+    console.error('Update current academic year error:', error);
+    res.status(500).json({ error: 'Failed to update settings' });
+  }
+});
+
 // Archive academic year (Registrar only)
 router.post('/archive', authenticate, authorize('registrar', 'admin'), [
   body('academic_year').matches(/^\d{4}-\d{4}$/)

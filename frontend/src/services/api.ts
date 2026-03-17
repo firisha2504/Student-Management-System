@@ -421,6 +421,17 @@ export const api = {
     return apiRequest('/academic-year/archived-years');
   },
 
+  async getCurrentAcademicYear() {
+    return apiRequest('/academic-year/current');
+  },
+
+  async setCurrentAcademicYear(data: { academic_year?: string; term?: string }) {
+    return apiRequest('/academic-year/current', {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  },
+
   async deleteArchivedYear(academicYear: string) {
     return apiRequest(`/academic-year/archive/${academicYear}`, {
       method: 'DELETE',

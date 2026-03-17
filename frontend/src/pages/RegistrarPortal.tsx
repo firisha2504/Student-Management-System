@@ -90,6 +90,37 @@ export default function RegistrarPortal() {
   const [bulkSubSection, setBulkSubSection] = useState("");
   const [bulkAssigning, setBulkAssigning] = useState(false);
 
+  // Current academic year
+  const [currentAcademicYear, setCurrentAcademicYear] = useState<string | null>(null);
+  const [currentTerm, setCurrentTerm] = useState<string | null>(null);
+  const [settingYear, setSettingYear] = useState("");
+  const [settingTerm, setSettingTerm] = useState("");
+  const [savingSettings, setSavingSettings] = useState(false);
+
+  useEffect(() => {
+    api.getCurrentAcademicYear().then((d: any) => {
+      if (d?.academic_year) { setCurrentAcademicYear(d.academic_year); setSettingYear(d.academic_year.replace('-', '/')); }
+      if (d?.term) { setCurrentTerm(d.term); setSettingTerm(d.term); }
+    }).catch(() => {});
+  }, []);
+
+  const handleSaveSettings = async () => {
+    if (!settingYear || !/^\d{4}\/\d{4}$/.test(settingYear)) {
+      toast({ title: "Error", description: "Enter a valid year (e.g., 2025/2026)", variant: "destructive" }); return;
+    }
+    setSavingSettings(true);
+    try {
+      const formatted = settingYear.replace('/', '-');
+      await api.setCurrentAcademicYear({ academic_year: formatted, term: settingTerm || undefined });
+      setCurrentAcademicYear(formatted);
+      setCurrentTerm(settingTerm || null);
+      toast({ title: "Saved", description: `Active year set to ${settingYear}` });
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    }
+    setSavingSettings(false);
+  };
+
   const handleArchiveYear = async () => {
     setArchiving(true);
     setArchiveConfirmOpen(false);
@@ -577,8 +608,68 @@ export default function RegistrarPortal() {
           <div className="space-y-6 max-w-lg">
             <div>
               <h2 className="text-xl font-bold text-foreground">Academic Year</h2>
-              <p className="text-sm text-muted-foreground">Archive student results for an academic year</p>
+              <p className="text-sm text-muted-foreground">Manage the active academic year and archive results</p>
             </div>
+
+            {/* Set Current Academic Year */}
+            <Card className="border-0 shadow-sm">
+              <CardContent className="pt-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="gradient-accent rounded-xl p-2.5"><History className="h-5 w-5 text-white" /></div>
+                    <div>
+                      <p className="font-semibold text-foreground">Current Academic Year</p>
+                      <p className="text-xs text-muted-foreground">Shown to teachers and registrar</p>
+                    </div>
+                  </div>
+                  {currentAcademicYear && (
+                    <div className="flex items-center gap-2">
+                      <Badge className="gradient-accent border-0 text-white font-mono text-xs px-3 py-1">
+                        {currentAcademicYear.replace('-', '/')}
+                        {currentTerm ? ` · ${currentTerm}` : ''}
+                      </Badge>
+                      <Button
+                        size="sm" variant="ghost"
+                        className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10 rounded-lg"
+                        onClick={async () => {
+                          try {
+                            await api.setCurrentAcademicYear({ academic_year: '', term: '' });
+                            setCurrentAcademicYear(null); setCurrentTerm(null);
+                            setSettingYear(''); setSettingTerm('');
+                            toast({ title: "Cleared", description: "Active academic year removed" });
+                          } catch (e: any) {
+                            toast({ title: "Error", description: e.message, variant: "destructive" });
+                          }
+                        }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Year (e.g., 2025/2026)</Label>
+                    <Input value={settingYear} onChange={e => setSettingYear(e.target.value)} placeholder="2025/2026" className="h-10 rounded-xl" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Term</Label>
+                    <Select value={settingTerm} onValueChange={setSettingTerm}>
+                      <SelectTrigger className="rounded-xl h-10"><SelectValue placeholder="Select term" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Term 1">Term 1</SelectItem>
+                        <SelectItem value="Term 2">Term 2</SelectItem>
+                        <SelectItem value="Term 3">Term 3</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <Button onClick={handleSaveSettings} disabled={savingSettings} className="w-full rounded-xl gradient-accent border-0 text-white h-10 font-semibold">
+                  {savingSettings ? "Saving..." : currentAcademicYear ? "Update Active Year" : "Set as Active Year"}
+                </Button>
+              </CardContent>
+            </Card>
             <Card className="border-0 shadow-sm">
               <CardContent className="pt-6 space-y-4">
                 <div className="flex items-center gap-3">
@@ -685,6 +776,13 @@ export default function RegistrarPortal() {
               );
             })}
           </nav>
+          {!sidebarCollapsed && currentAcademicYear && (
+            <div className="px-4 py-3 border-t border-sidebar-border">
+              <p className="text-xs text-sidebar-foreground/50 uppercase tracking-wide mb-1">Academic Year</p>
+              <p className="text-xs font-semibold text-sidebar-foreground">{currentAcademicYear}</p>
+              {currentTerm && <p className="text-xs text-sidebar-foreground/60">{currentTerm}</p>}
+            </div>
+          )}
         </aside>
 
         {/* Mobile sidebar */}
@@ -701,6 +799,13 @@ export default function RegistrarPortal() {
               </button>
             ))}
           </nav>
+          {currentAcademicYear && (
+            <div className="px-4 py-3 border-t border-sidebar-border">
+              <p className="text-xs text-sidebar-foreground/50 uppercase tracking-wide mb-1">Academic Year</p>
+              <p className="text-xs font-semibold text-sidebar-foreground">{currentAcademicYear}</p>
+              {currentTerm && <p className="text-xs text-sidebar-foreground/60">{currentTerm}</p>}
+            </div>
+          )}
         </aside>
 
         <main className="flex-1 min-w-0 p-6 lg:p-8">{renderContent()}</main>

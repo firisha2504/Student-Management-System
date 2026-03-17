@@ -74,17 +74,23 @@ export default function TeacherPortal() {
   const [expandedSubjects, setExpandedSubjects] = useState<Set<string>>(new Set());
 
   const [successModal, setSuccessModal] = useState<{ title: string; description?: string } | null>(null);
-  const [term] = useState("1");
+  const [term, setTerm] = useState("1");
   const currentYear = new Date().getFullYear();
-  const [academicYear] = useState(`${currentYear}-${currentYear + 1}`);
+  const [academicYear, setAcademicYear] = useState(`${currentYear}-${currentYear + 1}`);
 
   // Load teacher assignments + subjects on mount
   useEffect(() => {
     const load = async () => {
       try {
-        const [a, subs] = await Promise.all([api.getMyAssignments(), api.getAllSubjects()]);
+        const [a, subs, yearData] = await Promise.all([
+          api.getMyAssignments(),
+          api.getAllSubjects(),
+          api.getCurrentAcademicYear(),
+        ]);
         setAssignments(a);
         setAllSubjects(subs || []);
+        if (yearData?.academic_year) setAcademicYear(yearData.academic_year);
+        if (yearData?.term) setTerm(yearData.term.replace('Term ', ''));
       } catch (e: any) {
         toast({ title: "Error", description: "Failed to load assignments", variant: "destructive" });
       }
@@ -307,7 +313,9 @@ export default function TeacherPortal() {
     <div className="space-y-5">
       <div>
         <h2 className="text-xl font-bold text-foreground">Upload Grades</h2>
-        <p className="text-sm text-muted-foreground">Select a subject and class to enter scores</p>
+        <p className="text-sm text-muted-foreground">
+          {academicYear} · Term {term}
+        </p>
       </div>
 
       {/* Filters */}
