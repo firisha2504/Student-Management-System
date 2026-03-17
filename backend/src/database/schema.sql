@@ -385,7 +385,7 @@ CREATE TABLE credentials_log (
 INSERT INTO system_settings (setting_key, setting_value) VALUES
 ('system_locked', 'false'),
 ('current_academic_year', '2024-2025'),
-('current_term', 'Term 1');
+('current_term', 'Semester 1');
 
 -- Insert default subjects
 INSERT INTO subjects (subject_name, subject_code, description, credit_hours, ects, grade_level, stream) VALUES

@@ -74,7 +74,7 @@ export default function TeacherPortal() {
   const [expandedSubjects, setExpandedSubjects] = useState<Set<string>>(new Set());
 
   const [successModal, setSuccessModal] = useState<{ title: string; description?: string } | null>(null);
-  const [term, setTerm] = useState("1");
+  const [term, setTerm] = useState("Semester 1");
   const currentYear = new Date().getFullYear();
   const [academicYear, setAcademicYear] = useState(`${currentYear}-${currentYear + 1}`);
 
@@ -90,7 +90,7 @@ export default function TeacherPortal() {
         setAssignments(a);
         setAllSubjects(subs || []);
         if (yearData?.academic_year) setAcademicYear(yearData.academic_year);
-        if (yearData?.term) setTerm(yearData.term.replace('Term ', ''));
+        if (yearData?.term) setTerm(yearData.term);
       } catch (e: any) {
         toast({ title: "Error", description: "Failed to load assignments", variant: "destructive" });
       }
@@ -314,7 +314,7 @@ export default function TeacherPortal() {
       <div>
         <h2 className="text-xl font-bold text-foreground">Upload Grades</h2>
         <p className="text-sm text-muted-foreground">
-          {academicYear} · Term {term}
+          {academicYear} · {term}
         </p>
       </div>
 

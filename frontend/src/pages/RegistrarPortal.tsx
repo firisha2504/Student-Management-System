@@ -654,13 +654,12 @@ export default function RegistrarPortal() {
                     <Input value={settingYear} onChange={e => setSettingYear(e.target.value)} placeholder="2025/2026" className="h-10 rounded-xl" />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs">Term</Label>
+                    <Label className="text-xs">Semester</Label>
                     <Select value={settingTerm} onValueChange={setSettingTerm}>
-                      <SelectTrigger className="rounded-xl h-10"><SelectValue placeholder="Select term" /></SelectTrigger>
+                      <SelectTrigger className="rounded-xl h-10"><SelectValue placeholder="Select semester" /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="Term 1">Term 1</SelectItem>
-                        <SelectItem value="Term 2">Term 2</SelectItem>
-                        <SelectItem value="Term 3">Term 3</SelectItem>
+                        <SelectItem value="Semester 1">Semester 1</SelectItem>
+                        <SelectItem value="Semester 2">Semester 2</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
