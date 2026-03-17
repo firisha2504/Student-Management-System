@@ -9,17 +9,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import {
-  Upload, CheckCircle2, Plus, Trash2, AlertCircle,
-  ChevronDown, ChevronUp, Zap, Pencil, Save, X, Eye
-} from "lucide-react";
+import { Upload, CheckCircle2, Plus, Trash2, AlertCircle, ChevronDown, ChevronUp, Zap, Pencil, Save, X, Eye, Users } from "lucide-react";
 import SuccessModal from "@/components/SuccessModal";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 
 interface Subject { id: number; subject_name: string; grade_level: number; stream: string | null; }
-interface StudentProfile { user_id: number; full_name: string; username: string; }
+interface StudentProfile { user_id: number; full_name: string; username: string; admission_number?: string; }
 interface AssessmentType { id: number; assessment_name: string; weight: number; subject_id: number; teacher_id: number; }
 interface SavedScore { id: number; student_id: number; full_name: string; username: string; score: number; }
 
@@ -349,6 +346,40 @@ export default function TeacherPortal() {
         </CardContent>
       </Card>
 
+      {/* Student List — visible as soon as grade + section is selected */}
+      {gradeLevel && section && (
+        <Card className="border-0 shadow-sm overflow-hidden">
+          <CardHeader className="pb-2 pt-4 px-4">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <span className="inline-flex items-center justify-center rounded-lg bg-primary/10 text-primary px-2.5 py-1 text-base font-extrabold">
+                  {students.length}
+                </span>
+                Students — Grade {gradeLevel}
+                <span className="capitalize text-muted-foreground font-normal">· {section}{subSection && subSection !== "all" ? ` / ${subSection}` : ""}</span>
+              </CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent className="p-0">
+            {students.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-5">No students found for this selection.</p>
+            ) : (
+              <div className="divide-y divide-border/50 max-h-56 overflow-y-auto">
+                {students.map((s, i) => (
+                  <div key={s.user_id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/30 transition-colors">
+                    <span className="text-xs text-muted-foreground w-6 shrink-0 font-medium">{i + 1}</span>
+                    <span className="text-sm font-semibold flex-1">{s.full_name}</span>
+                    <span className="text-xs font-mono font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-lg">
+                      {s.admission_number || s.username}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {selectedSubject && (
         <div className="space-y-4">
           {/* Assessment Setup */}
@@ -485,8 +516,8 @@ export default function TeacherPortal() {
                               <TableRow key={s.user_id} className={cn("hover:bg-muted/30", isModified && "bg-amber-500/5")}>
                                 <TableCell className="text-muted-foreground text-sm">{i + 1}</TableCell>
                                 <TableCell>
-                                  <p className="font-medium text-sm">{s.full_name}</p>
-                                  <p className="text-xs text-muted-foreground font-mono">{s.username}</p>
+                                  <p className="font-semibold text-sm">{s.full_name}</p>
+                                  <p className="text-xs font-mono font-bold text-primary">{s.admission_number || s.username}</p>
                                 </TableCell>
                                 <TableCell>
                                   <Input type="number" min={0} max={getMaxScore()} value={current} onChange={e => setScores(p => ({ ...p, [s.user_id]: e.target.value }))} placeholder={`0–${getMaxScore()}`} className={cn("rounded-lg h-8 text-sm w-28", isModified && "border-amber-400 focus-visible:ring-amber-400")} />
@@ -565,8 +596,8 @@ export default function TeacherPortal() {
                                 <TableRow key={s.id} className={cn("hover:bg-muted/30", isEditing && "bg-primary/5")}>
                                   <TableCell className="text-muted-foreground text-sm">{i + 1}</TableCell>
                                   <TableCell>
-                                    <p className="font-medium text-sm">{s.full_name}</p>
-                                    <p className="text-xs text-muted-foreground font-mono">{s.username}</p>
+                                    <p className="font-semibold text-sm">{s.full_name}</p>
+                                    <p className="text-xs font-mono font-bold text-primary">{s.username}</p>
                                   </TableCell>
                                   <TableCell>
                                     {isEditing ? (
