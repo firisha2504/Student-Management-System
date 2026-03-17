@@ -71,10 +71,12 @@ export default function TeacherPortal() {
   const [loadingAllStudents, setLoadingAllStudents] = useState(false);
   const [expandedGrades, setExpandedGrades] = useState<Set<number>>(new Set());
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
+  const [expandedSubjects, setExpandedSubjects] = useState<Set<string>>(new Set());
 
   const [successModal, setSuccessModal] = useState<{ title: string; description?: string } | null>(null);
   const [term] = useState("1");
-  const [academicYear] = useState(new Date().getFullYear().toString());
+  const currentYear = new Date().getFullYear();
+  const [academicYear] = useState(`${currentYear}-${currentYear + 1}`);
 
   // Load teacher assignments + subjects on mount
   useEffect(() => {
@@ -136,14 +138,16 @@ export default function TeacherPortal() {
 
   // Load saved scores when viewing
   const loadSavedScores = useCallback(async () => {
-    if (!selectedSubjectId || !selectedGrade) return;
     try {
       const data = await api.getAssessmentScores({ term, academic_year: academicYear });
       setSavedScores(data || []);
+      // Auto-expand all subjects
+      const subjects = [...new Set((data || []).map((sc: any) => sc.subject_name ?? "Unknown Subject"))];
+      setExpandedSubjects(new Set(subjects as string[]));
     } catch {
       setSavedScores([]);
     }
-  }, [selectedSubjectId, selectedGrade, term, academicYear]);
+  }, [term, academicYear]);
 
   useEffect(() => {
     if (scoreTab === "view") loadSavedScores();
@@ -288,6 +292,7 @@ export default function TeacherPortal() {
 
   const toggleGrade = (g: number) => setExpandedGrades(prev => { const n = new Set(prev); n.has(g) ? n.delete(g) : n.add(g); return n; });
   const toggleSection = (key: string) => setExpandedSections(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
+  const toggleSubject = (key: string) => setExpandedSubjects(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
 
   const navItems: { id: NavSection; label: string; icon: React.ElementType }[] = [
     { id: "grades", label: "Upload Grades", icon: Upload },
@@ -325,20 +330,20 @@ export default function TeacherPortal() {
             </div>
             <div className="space-y-1">
               <Label className="text-xs text-muted-foreground">Section</Label>
-              <Select value={selectedSection} onValueChange={setSelectedSection}>
+              <Select value={selectedSection || "__all__"} onValueChange={v => setSelectedSection(v === "__all__" ? "" : v)}>
                 <SelectTrigger className="rounded-xl"><SelectValue placeholder="All sections" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All</SelectItem>
+                  <SelectItem value="__all__">All</SelectItem>
                   {assignments.sections.map(s => <SelectItem key={s} value={s} className="capitalize">{s}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1">
               <Label className="text-xs text-muted-foreground">Sub-Section</Label>
-              <Select value={selectedSubSection} onValueChange={setSelectedSubSection}>
+              <Select value={selectedSubSection || "__all__"} onValueChange={v => setSelectedSubSection(v === "__all__" ? "" : v)}>
                 <SelectTrigger className="rounded-xl"><SelectValue placeholder="All" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All</SelectItem>
+                  <SelectItem value="__all__">All</SelectItem>
                   {assignments.subSections.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                 </SelectContent>
               </Select>
@@ -423,7 +428,7 @@ export default function TeacherPortal() {
       )}
 
       {/* Score Tabs */}
-      {selectedSubjectId && selectedGrade && assessmentTypes.length > 0 && (
+      {(selectedSubjectId && selectedGrade && assessmentTypes.length > 0) || scoreTab === "view" ? (
         <Card className="border-0 shadow-sm">
           <CardContent className="p-0">
             {/* Tab bar */}
@@ -487,56 +492,87 @@ export default function TeacherPortal() {
 
             {/* View uploaded */}
             {scoreTab === "view" && (
-              <div className="p-4">
+              <div className="p-4 space-y-4">
                 {savedScores.length === 0 ? (
                   <p className="text-center text-muted-foreground py-6">No scores uploaded yet.</p>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="bg-muted/20">
-                          <TableHead>Student</TableHead>
-                          <TableHead>Assessment</TableHead>
-                          <TableHead className="text-right">Score</TableHead>
-                          <TableHead className="w-20">Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {savedScores.map(sc => (
-                          <TableRow key={sc.id} className="hover:bg-muted/30">
-                            <TableCell>
-                              <p className="font-bold text-sm">{sc.full_name}</p>
-                              <p className="text-xs text-muted-foreground font-mono">{sc.username}</p>
-                            </TableCell>
-                            <TableCell className="text-sm text-muted-foreground">{(sc as any).assessment_name ?? "—"}</TableCell>
-                            <TableCell className="text-right">
-                              {editingScoreId === sc.id ? (
-                                <div className="flex items-center justify-end gap-1">
-                                  <Input type="number" min={0} max={100} value={editingScoreValue} onChange={e => setEditingScoreValue(e.target.value)} className="h-7 w-20 rounded-lg text-sm" />
-                                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => saveEditedScore(sc.id)}><Save className="h-3.5 w-3.5 text-emerald-500" /></Button>
-                                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setEditingScoreId(null)}><X className="h-3.5 w-3.5" /></Button>
-                                </div>
-                              ) : (
-                                <Badge className={cn("text-xs", sc.score >= 50 ? "gradient-accent border-0 text-white" : "bg-destructive text-destructive-foreground")}>{sc.score}</Badge>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-1">
-                                <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => { setEditingScoreId(sc.id); setEditingScoreValue(String(sc.score)); }}><Pencil className="h-3 w-3" /></Button>
-                                <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={() => deleteScore(sc.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                ) : (() => {
+                  // Group by subject_name → student_id
+                  const bySubject = savedScores.reduce<Record<string, Record<number, { full_name: string; username: string; admission_number?: string; scores: typeof savedScores }>>>((acc, sc) => {
+                    const subj = (sc as any).subject_name ?? "Unknown Subject";
+                    if (!acc[subj]) acc[subj] = {};
+                    if (!acc[subj][sc.student_id]) acc[subj][sc.student_id] = { full_name: sc.full_name, username: sc.username, admission_number: (sc as any).admission_number, scores: [] };
+                    acc[subj][sc.student_id].scores.push(sc);
+                    return acc;
+                  }, {});
+
+                  return Object.entries(bySubject).map(([subjectName, studentMap]) => (
+                    <div key={subjectName} className="rounded-xl border border-border/50 overflow-hidden">
+                      {/* Subject header — collapsible */}
+                      <button
+                        onClick={() => toggleSubject(subjectName)}
+                        className="w-full flex items-center gap-2 px-4 py-2.5 bg-primary/10 border-b border-border/50 hover:bg-primary/15 transition-colors"
+                      >
+                        <BookOpen className="h-4 w-4 text-primary shrink-0" />
+                        <span className="font-bold text-sm text-primary flex-1 text-left">{subjectName}</span>
+                        <Badge variant="outline" className="text-xs">{Object.keys(studentMap).length} students</Badge>
+                        {expandedSubjects.has(subjectName)
+                          ? <ChevronUp className="h-4 w-4 text-primary shrink-0" />
+                          : <ChevronDown className="h-4 w-4 text-primary shrink-0" />}
+                      </button>
+
+                      {/* Students — only shown when expanded */}
+                      {expandedSubjects.has(subjectName) && Object.entries(studentMap).map(([studentId, { full_name, username, admission_number, scores: studentScores }]) => {
+                        const total = studentScores.reduce((sum, sc) => {
+                          const at = assessmentTypes.find(a => a.id === (sc as any).assessment_type_id);
+                          return sum + (at ? (sc.score * at.weight) / 100 : 0);
+                        }, 0);
+
+                        return (
+                          <div key={studentId} className="border-b border-border/30 last:border-0">
+                            {/* Student row header */}
+                            <div className="flex items-center justify-between px-4 py-2 bg-muted/20">
+                              <div>
+                                <span className="font-semibold text-sm">{full_name}</span>
+                                <span className="text-xs text-muted-foreground font-mono ml-2">{admission_number ?? username}</span>
                               </div>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                )}
+                              <Badge className={cn("text-xs", total >= 50 ? "gradient-accent border-0 text-white" : "bg-destructive text-destructive-foreground")}>
+                                {total.toFixed(1)}%
+                              </Badge>
+                            </div>
+                            {/* Assessment scores */}
+                            <div className="divide-y divide-border/20">
+                              {studentScores.map(sc => (
+                                <div key={sc.id} className="flex items-center justify-between px-6 py-2 hover:bg-muted/10 transition-colors">
+                                  <span className="text-sm text-muted-foreground">{(sc as any).assessment_name ?? "—"}</span>
+                                  <div className="flex items-center gap-2">
+                                    {editingScoreId === sc.id ? (
+                                      <>
+                                        <Input type="number" min={0} max={100} value={editingScoreValue} onChange={e => setEditingScoreValue(e.target.value)} className="h-7 w-20 rounded-lg text-sm" />
+                                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => saveEditedScore(sc.id)}><Save className="h-3.5 w-3.5 text-emerald-500" /></Button>
+                                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setEditingScoreId(null)}><X className="h-3.5 w-3.5" /></Button>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Badge variant="outline" className="text-xs font-mono">{Number(sc.score).toFixed(1)}</Badge>
+                                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => { setEditingScoreId(sc.id); setEditingScoreValue(String(sc.score)); }}><Pencil className="h-3 w-3" /></Button>
+                                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={() => deleteScore(sc.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ));
+                })()}
               </div>
             )}
           </CardContent>
         </Card>
-      )}
+      ) : null}
 
       {selectedSubjectId && selectedGrade && assessmentTypes.length === 0 && (
         <Card className="border-0 shadow-sm">
