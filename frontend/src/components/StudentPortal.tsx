@@ -88,7 +88,7 @@ export default function StudentPortal() {
         // Group scores by assessment_type_id
         const scoreMap: Record<number, number> = {};
         scoresData.forEach((score: AssessmentScore) => {
-          scoreMap[score.assessment_type_id] = score.score;
+          scoreMap[score.assessment_type_id] = Number(score.score);
         });
 
         // For each subject, fetch assessment types and build breakdown
@@ -107,12 +107,12 @@ export default function StudentPortal() {
 
             const assessments = assessmentTypes.map((at: any) => ({
               assessment_name: at.assessment_name,
-              weight: at.weight,
-              score: scoreMap[at.id] ?? -1,
+              weight: Number(at.weight),
+              score: scoreMap[at.id] !== undefined ? Number(scoreMap[at.id]) : -1,
             }));
 
             const scored = assessments.filter((a: any) => a.score >= 0);
-            const totalScore = scored.reduce((sum: number, a: any) => sum + (a.score || 0), 0);
+            const totalScore = scored.reduce((sum: number, a: any) => sum + a.score, 0);
 
             return {
               subject,
@@ -152,7 +152,7 @@ export default function StudentPortal() {
 
   const overallTotal = breakdowns.reduce((sum, b) => {
     const scored = b.assessments.filter(a => a.score >= 0);
-    return sum + scored.reduce((s, a) => s + a.score, 0);
+    return sum + scored.reduce((s, a) => s + Number(a.score), 0);
   }, 0);
   const subjectsWithScores = breakdowns.filter(b => b.assessments.some(a => a.score >= 0));
   const overallAverage = subjectsWithScores.length > 0
@@ -334,7 +334,7 @@ export default function StudentPortal() {
                                     {(() => {
                                       const scored = bd.assessments.filter(a => a.score >= 0);
                                       if (scored.length === 0) return null;
-                                      const total = scored.reduce((sum, a) => sum + a.score, 0);
+                                      const total = scored.reduce((sum, a) => sum + Number(a.score), 0);
                                       return (
                                         <div className="grid grid-cols-3 gap-0 items-center px-4 py-3 bg-muted/30 border-t border-border/50">
                                           <span className="text-sm font-bold text-foreground">Total</span>
