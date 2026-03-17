@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { api } from "@/services/api";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,644 +9,721 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Upload, CheckCircle2, Plus, Trash2, AlertCircle, ChevronDown, ChevronUp, Zap, Pencil, Save, X, Eye, Users } from "lucide-react";
+import {
+  Upload, CheckCircle2, Plus, Trash2, AlertCircle,
+  ChevronDown, ChevronUp, Zap, Pencil, Save, X, Eye,
+  Users, BookOpen, ChevronLeft, ChevronRight, Menu
+} from "lucide-react";
 import SuccessModal from "@/components/SuccessModal";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 
 interface Subject { id: number; subject_name: string; grade_level: number; stream: string | null; }
-interface StudentProfile { user_id: number; full_name: string; username: string; admission_number?: string; }
+interface StudentProfile { user_id: number; full_name: string; username: string; admission_number?: string; section?: string; sub_section?: string; grade_level?: number; }
 interface AssessmentType { id: number; assessment_name: string; weight: number; subject_id: number; teacher_id: number; }
 interface SavedScore { id: number; student_id: number; full_name: string; username: string; score: number; }
 
 const FIXED_ASSESSMENTS = ["Mid Exam", "Final Exam"];
-type Tab = "setup" | "scores" | "view";
+type NavSection = "grades" | "students";
+type ScoreTab = "scores" | "view";
 
 export default function TeacherPortal() {
-  const { user } = useAuth();
+  const { role } = useAuth();
   const { toast } = useToast();
 
-  // Filters
-  const [gradeLevel, setGradeLevel] = useState("");
-  const [stream, setStream] = useState("");
-  const [section, setSection] = useState("");
-  const [subSection, setSubSection] = useState("");
-  const [selectedSubject, setSelectedSubject] = useState("");
-  const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [students, setStudents] = useState<StudentProfile[]>([]);
+  // Sidebar
+  const [activeSection, setActiveSection] = useState<NavSection>("grades");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   // Assignments
-  const [assignedGrades, setAssignedGrades] = useState<number[]>([]);
-  const [assignedSections, setAssignedSections] = useState<string[]>([]);
-  const [assignedSubjectIds, setAssignedSubjectIds] = useState<number[]>([]);
+  const [assignments, setAssignments] = useState<{ subjects: number[]; grades: number[]; sections: string[]; subSections: string[] }>({ subjects: [], grades: [], sections: [], subSections: [] });
+  const [allSubjects, setAllSubjects] = useState<Subject[]>([]);
+
+  // Grade upload form state
+  const [selectedSubjectId, setSelectedSubjectId] = useState<number | null>(null);
+  const [selectedGrade, setSelectedGrade] = useState<number | null>(null);
+  const [selectedSection, setSelectedSection] = useState<string>("");
+  const [selectedSubSection, setSelectedSubSection] = useState<string>("");
+  const [students, setStudents] = useState<StudentProfile[]>([]);
+  const [loadingStudents, setLoadingStudents] = useState(false);
 
   // Assessment setup
+  const [assessmentSetupOpen, setAssessmentSetupOpen] = useState(false);
   const [assessmentTypes, setAssessmentTypes] = useState<AssessmentType[]>([]);
-  const [weights, setWeights] = useState<Record<string, string>>({});
-  const [editNames, setEditNames] = useState<Record<string, string>>({});
   const [newAssessmentName, setNewAssessmentName] = useState("");
-  const [savingSetup, setSavingSetup] = useState(false);
-  const [setupOpen, setSetupOpen] = useState(false);
+  const [newAssessmentWeight, setNewAssessmentWeight] = useState<number>(20);
+  const [editingAssessmentId, setEditingAssessmentId] = useState<number | null>(null);
+  const [editingAssessmentName, setEditingAssessmentName] = useState("");
 
-  // Score entry
-  const [selectedAssessment, setSelectedAssessment] = useState("");
-  const [scores, setScores] = useState<Record<string, string>>({});
-  const [existingScores, setExistingScores] = useState<Record<string, number>>({});
-  const [submitting, setSubmitting] = useState(false);
-
-  // View/edit saved scores
-  const [activeTab, setActiveTab] = useState<Tab>("scores");
-  const [viewAssessment, setViewAssessment] = useState("");
+  // Scores
+  const [scoreTab, setScoreTab] = useState<ScoreTab>("scores");
+  const [scores, setScores] = useState<Record<number, Record<number, string>>>({}); // studentId -> assessmentTypeId -> score
   const [savedScores, setSavedScores] = useState<SavedScore[]>([]);
-  const [loadingView, setLoadingView] = useState(false);
-  const [editingScore, setEditingScore] = useState<Record<number, string>>({});
-  const [savingScore, setSavingScore] = useState<number | null>(null);
+  const [modifiedStudents, setModifiedStudents] = useState<Set<number>>(new Set());
+  const [submitting, setSubmitting] = useState(false);
+  const [editingScoreId, setEditingScoreId] = useState<number | null>(null);
+  const [editingScoreValue, setEditingScoreValue] = useState<string>("");
+
+  // My Students
+  const [allStudents, setAllStudents] = useState<StudentProfile[]>([]);
+  const [loadingAllStudents, setLoadingAllStudents] = useState(false);
+  const [expandedGrades, setExpandedGrades] = useState<Set<number>>(new Set());
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
 
   const [successModal, setSuccessModal] = useState<{ title: string; description?: string } | null>(null);
-  const showSuccess = (title: string, description?: string) => setSuccessModal({ title, description });
-  const needsStream = gradeLevel === "11" || gradeLevel === "12";
+  const [term] = useState("1");
+  const [academicYear] = useState(new Date().getFullYear().toString());
 
-  const getCurrentAcademicYear = () => {
-    const y = new Date().getFullYear();
-    return new Date().getMonth() >= 8 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
-  };
-
-  // Load assignments
+  // Load teacher assignments + subjects on mount
   useEffect(() => {
-    if (!user) return;
-    api.getMyAssignments().then(a => {
-      setAssignedGrades(a.grades || []);
-      setAssignedSections(a.sections || []);
-      setAssignedSubjectIds(a.subjects || []);
-    }).catch(console.error);
-  }, [user]);
+    const load = async () => {
+      try {
+        const [a, subs] = await Promise.all([api.getMyAssignments(), api.getAllSubjects()]);
+        setAssignments(a);
+        setAllSubjects(subs || []);
+      } catch (e: any) {
+        toast({ title: "Error", description: "Failed to load assignments", variant: "destructive" });
+      }
+    };
+    load();
+  }, []);
 
-  // Load subjects when grade/stream changes
+  // Subjects filtered to teacher's assigned grades
+  const mySubjects = allSubjects.filter(s => assignments.grades.includes(s.grade_level));
+
+  // Load students when grade/section/sub-section changes
   useEffect(() => {
-    if (!user || !gradeLevel || assignedSubjectIds.length === 0) return;
-    const filters: any = { grade_level: parseInt(gradeLevel) };
-    if (needsStream && stream) filters.stream = stream;
-    api.getAllSubjects(filters).then(all => {
-      setSubjects(all.filter((s: Subject) => assignedSubjectIds.includes(s.id)));
-      setSelectedSubject("");
-    }).catch(console.error);
-  }, [gradeLevel, stream, user, needsStream, assignedSubjectIds]);
+    if (!selectedGrade) { setStudents([]); return; }
+    const fetch = async () => {
+      setLoadingStudents(true);
+      try {
+        const filters: any = { grade_level: selectedGrade };
+        if (selectedSection) filters.section = selectedSection;
+        if (selectedSubSection) filters.sub_section = selectedSubSection;
+        const data = await api.getStudents(filters);
+        setStudents(data || []);
+        // Pre-fill scores map
+        const map: Record<number, Record<number, string>> = {};
+        (data || []).forEach((s: StudentProfile) => { map[s.user_id] = {}; });
+        setScores(map);
+        setModifiedStudents(new Set());
+      } catch {
+        toast({ title: "Error", description: "Failed to load students", variant: "destructive" });
+      }
+      setLoadingStudents(false);
+    };
+    fetch();
+  }, [selectedGrade, selectedSection, selectedSubSection]);
 
-  // Load assessment types when subject changes
+  // Load assessment types when subject+grade changes
   useEffect(() => {
-    if (!selectedSubject || !gradeLevel) { setAssessmentTypes([]); return; }
-    fetchAssessmentTypes();
-  }, [selectedSubject, gradeLevel]);
+    if (!selectedSubjectId || !selectedGrade) { setAssessmentTypes([]); return; }
+    const fetch = async () => {
+      try {
+        const filters: any = { subject_id: selectedSubjectId, grade_level: selectedGrade };
+        if (selectedSection) filters.section = selectedSection;
+        if (selectedSubSection) filters.sub_section = selectedSubSection;
+        const data = await api.getAssessmentTypes(filters);
+        setAssessmentTypes(data || []);
+      } catch {
+        setAssessmentTypes([]);
+      }
+    };
+    fetch();
+  }, [selectedSubjectId, selectedGrade, selectedSection, selectedSubSection]);
 
-  const fetchAssessmentTypes = async () => {
+  // Load saved scores when viewing
+  const loadSavedScores = useCallback(async () => {
+    if (!selectedSubjectId || !selectedGrade) return;
     try {
-      const types = await api.getAssessmentTypes({
-        subject_id: parseInt(selectedSubject),
-        grade_level: parseInt(gradeLevel),
-        stream: stream || undefined,
-        section: section || undefined,
-      });
-      setAssessmentTypes(types || []);
-      const w: Record<string, string> = {};
-      const n: Record<string, string> = {};
-      types.forEach((t: AssessmentType) => { w[t.id] = String(Number(t.weight)); n[t.id] = t.assessment_name; });
-      setWeights(w);
-      setEditNames(n);
-      if (types.length === 0) await ensureFixedAssessments();
-    } catch (e) { console.error(e); setAssessmentTypes([]); }
-  };
-
-  const ensureFixedAssessments = async () => {
-    if (!selectedSubject || !gradeLevel) return;
-    for (const name of FIXED_ASSESSMENTS) {
-      await api.createAssessmentType({
-        subject_id: parseInt(selectedSubject), grade_level: parseInt(gradeLevel),
-        stream: stream || undefined, section: section || undefined,
-        assessment_name: name, weight: name === "Mid Exam" ? 30 : 40,
-      });
+      const data = await api.getAssessmentScores({ term, academic_year: academicYear });
+      setSavedScores(data || []);
+    } catch {
+      setSavedScores([]);
     }
-    await fetchAssessmentTypes();
-  };
+  }, [selectedSubjectId, selectedGrade, term, academicYear]);
 
-  // Load students
   useEffect(() => {
-    if (!gradeLevel || !section) return;
-    const filters: any = { grade_level: parseInt(gradeLevel), section };
-    if (needsStream && stream) filters.stream = stream;
-    if (subSection && subSection !== "all") filters.sub_section = subSection;
-    api.getStudents(filters).then(d => { setStudents(d || []); setScores({}); }).catch(console.error);
-  }, [gradeLevel, stream, section, subSection, needsStream]);
+    if (scoreTab === "view") loadSavedScores();
+  }, [scoreTab, loadSavedScores]);
 
-  // Load existing scores when assessment selected (Enter Scores tab)
+  // Pre-fill existing scores when entering edit tab
   useEffect(() => {
-    if (!selectedAssessment || students.length === 0) { setExistingScores({}); return; }
-    api.getAssessmentScores({ assessment_type_id: parseInt(selectedAssessment) }).then(data => {
-      const map: Record<string, number> = {};
-      const pre: Record<string, string> = {};
-      data.forEach((s: any) => { map[s.student_id] = Number(s.score); pre[s.student_id] = String(Number(s.score)); });
-      setExistingScores(map);
-      setScores(pre);
-    }).catch(console.error);
-  }, [selectedAssessment, students]);
+    if (scoreTab !== "scores" || assessmentTypes.length === 0 || students.length === 0) return;
+    const prefill = async () => {
+      try {
+        const data = await api.getAssessmentScores({ term, academic_year: academicYear });
+        const map: Record<number, Record<number, string>> = {};
+        students.forEach(s => { map[s.user_id] = {}; });
+        (data || []).forEach((sc: any) => {
+          if (map[sc.student_id]) map[sc.student_id][sc.assessment_type_id] = String(sc.score);
+        });
+        setScores(map);
+      } catch { /* ignore */ }
+    };
+    prefill();
+  }, [scoreTab, assessmentTypes, students]);
 
-  // Load saved scores for View tab
+  // Load all students for My Students tab
   useEffect(() => {
-    if (!viewAssessment || activeTab !== "view") return;
-    loadSavedScores();
-  }, [viewAssessment, activeTab]);
+    if (activeSection !== "students" || assignments.grades.length === 0) return;
+    const fetch = async () => {
+      setLoadingAllStudents(true);
+      try {
+        const results = await Promise.all(
+          assignments.grades.map(g => api.getStudents({ grade_level: g }))
+        );
+        const merged: StudentProfile[] = results.flat();
+        setAllStudents(merged);
+        // Auto-expand all grades
+        setExpandedGrades(new Set(assignments.grades));
+      } catch {
+        toast({ title: "Error", description: "Failed to load students", variant: "destructive" });
+      }
+      setLoadingAllStudents(false);
+    };
+    fetch();
+  }, [activeSection, assignments.grades]);
 
-  const loadSavedScores = async () => {
-    setLoadingView(true);
+  const totalWeight = assessmentTypes.reduce((s, a) => s + a.weight, 0);
+
+  const addAssessment = async (name: string, weight: number) => {
+    if (!selectedSubjectId || !selectedGrade) return;
     try {
-      const data = await api.getAssessmentScores({ assessment_type_id: parseInt(viewAssessment) });
-      // Enrich with student names from students list
-      const enriched: SavedScore[] = data.map((s: any) => {
-        const st = students.find(st => st.user_id === s.student_id);
-        return { id: s.id, student_id: s.student_id, full_name: st?.full_name || s.student_id, username: st?.username || "—", score: Number(s.score) };
-      });
-      setSavedScores(enriched);
-      setEditingScore({});
-    } catch (e) { console.error(e); }
-    setLoadingView(false);
-  };
-
-  // Assessment setup actions
-  const addCustomAssessment = async () => {
-    if (!newAssessmentName.trim() || !selectedSubject || !gradeLevel) return;
-    if (FIXED_ASSESSMENTS.includes(newAssessmentName.trim())) {
-      toast({ title: "Error", description: "That name is reserved.", variant: "destructive" }); return;
-    }
-    try {
-      await api.createAssessmentType({
-        subject_id: parseInt(selectedSubject), grade_level: parseInt(gradeLevel),
-        stream: stream || undefined, section: section || undefined,
-        assessment_name: newAssessmentName.trim(), weight: 0,
-      });
+      const filters: any = { subject_id: selectedSubjectId, grade_level: selectedGrade, assessment_name: name, weight };
+      if (selectedSection) filters.section = selectedSection;
+      if (selectedSubSection) filters.sub_section = selectedSubSection;
+      await api.createAssessmentType(filters);
+      const data = await api.getAssessmentTypes({ subject_id: selectedSubjectId, grade_level: selectedGrade });
+      setAssessmentTypes(data || []);
       setNewAssessmentName("");
-      await fetchAssessmentTypes();
-      showSuccess("Added", `"${newAssessmentName.trim()}" added.`);
-    } catch (e: any) { toast({ title: "Error", description: e.message, variant: "destructive" }); }
+      setNewAssessmentWeight(20);
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message || "Failed to add assessment", variant: "destructive" });
+    }
   };
 
   const deleteAssessment = async (id: number) => {
     try {
       await api.deleteAssessmentType(id);
-      await fetchAssessmentTypes();
-      showSuccess("Deleted", "Assessment removed.");
-    } catch (e: any) { toast({ title: "Error", description: e.message, variant: "destructive" }); }
+      setAssessmentTypes(prev => prev.filter(a => a.id !== id));
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message || "Failed to delete", variant: "destructive" });
+    }
   };
 
-  const saveWeights = async () => {
-    const total = Object.values(weights).reduce((s, v) => s + (parseFloat(v) || 0), 0);
-    if (Math.abs(total - 100) > 0.01) {
-      toast({ title: "Error", description: `Weights must total 100%. Currently: ${total}%`, variant: "destructive" }); return;
-    }
-    setSavingSetup(true);
+  const saveAssessmentName = async (id: number) => {
     try {
-      for (const [id, w] of Object.entries(weights)) {
-        await api.updateAssessmentType(parseInt(id), { weight: parseFloat(w), assessment_name: editNames[id]?.trim() || undefined });
-      }
-      showSuccess("Saved", "Assessment setup updated.");
-      await fetchAssessmentTypes();
-    } catch (e: any) { toast({ title: "Error", description: e.message, variant: "destructive" }); }
-    setSavingSetup(false);
-  };
-
-  // Score entry actions
-  const getMaxScore = () => {
-    const at = assessmentTypes.find(a => a.id === parseInt(selectedAssessment));
-    return at ? Number(at.weight) : 100;
-  };
-
-  const handleBulkSubmit = async () => {
-    if (!selectedAssessment) { toast({ title: "Error", description: "Select an assessment.", variant: "destructive" }); return; }
-    const maxScore = getMaxScore();
-    const entries = Object.entries(scores).filter(([, v]) => v.trim() !== "");
-    if (entries.length === 0) { toast({ title: "Error", description: "Enter at least one score.", variant: "destructive" }); return; }
-    for (const [, v] of entries) {
-      const n = parseFloat(v);
-      if (isNaN(n) || n < 0 || n > maxScore) {
-        toast({ title: "Error", description: `Scores must be 0–${maxScore}.`, variant: "destructive" }); return;
-      }
+      await api.updateAssessmentType(id, { assessment_name: editingAssessmentName });
+      setAssessmentTypes(prev => prev.map(a => a.id === id ? { ...a, assessment_name: editingAssessmentName } : a));
+      setEditingAssessmentId(null);
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message || "Failed to update", variant: "destructive" });
     }
+  };
+
+  const handleScoreChange = (studentId: number, assessmentTypeId: number, value: string) => {
+    setScores(prev => ({ ...prev, [studentId]: { ...(prev[studentId] || {}), [assessmentTypeId]: value } }));
+    setModifiedStudents(prev => new Set(prev).add(studentId));
+  };
+
+  const submitScores = async () => {
+    if (!selectedSubjectId || !selectedGrade || assessmentTypes.length === 0) return;
     setSubmitting(true);
     try {
-      await api.bulkUploadAssessmentScores({
-        scores: entries.map(([sid, val]) => ({ student_id: parseInt(sid), assessment_type_id: parseInt(selectedAssessment), score: parseFloat(val) })),
-        term: "Term 1", academic_year: getCurrentAcademicYear(),
+      const scoreEntries: { student_id: number; assessment_type_id: number; score: number }[] = [];
+      students.forEach(s => {
+        assessmentTypes.forEach(a => {
+          const val = scores[s.user_id]?.[a.id];
+          if (val !== undefined && val !== "") {
+            scoreEntries.push({ student_id: s.user_id, assessment_type_id: a.id, score: parseFloat(val) });
+          }
+        });
       });
-      showSuccess("Saved", `${entries.length} score(s) saved.`);
-      const data = await api.getAssessmentScores({ assessment_type_id: parseInt(selectedAssessment) });
-      const map: Record<string, number> = {};
-      data.forEach((s: any) => { map[s.student_id] = Number(s.score); });
-      setExistingScores(map);
-    } catch (e: any) { toast({ title: "Error", description: e.message || "Failed to save", variant: "destructive" }); }
-    setSubmitting(false);
-  };
-
-  // View/edit saved score actions
-  const startEditScore = (scoreId: number, current: number) => setEditingScore(prev => ({ ...prev, [scoreId]: String(current) }));
-  const cancelEditScore = (scoreId: number) => setEditingScore(prev => { const n = { ...prev }; delete n[scoreId]; return n; });
-
-  const saveEditedScore = async (scoreId: number, studentId: number) => {
-    const val = parseFloat(editingScore[scoreId] || "");
-    const maxScore = assessmentTypes.find(a => a.id === parseInt(viewAssessment));
-    const max = maxScore ? Number(maxScore.weight) : 100;
-    if (isNaN(val) || val < 0 || val > max) {
-      toast({ title: "Error", description: `Score must be 0–${max}.`, variant: "destructive" }); return;
+      if (scoreEntries.length === 0) { toast({ title: "No scores to upload", variant: "destructive" }); setSubmitting(false); return; }
+      await api.bulkUploadAssessmentScores({ scores: scoreEntries, term, academic_year: academicYear });
+      setSuccessModal({ title: "Scores Uploaded", description: `${scoreEntries.length} scores saved successfully.` });
+      setModifiedStudents(new Set());
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message || "Failed to upload scores", variant: "destructive" });
     }
-    setSavingScore(scoreId);
-    try {
-      await api.uploadAssessmentScore({
-        student_id: studentId, assessment_type_id: parseInt(viewAssessment),
-        score: val, term: "Term 1", academic_year: getCurrentAcademicYear(),
-      });
-      showSuccess("Updated", "Score updated.");
-      await loadSavedScores();
-    } catch (e: any) { toast({ title: "Error", description: e.message, variant: "destructive" }); }
-    setSavingScore(null);
+    setSubmitting(false);
   };
 
   const deleteScore = async (scoreId: number) => {
     try {
       await api.deleteAssessmentScore(scoreId);
-      showSuccess("Deleted", "Score removed.");
-      await loadSavedScores();
-    } catch (e: any) { toast({ title: "Error", description: e.message, variant: "destructive" }); }
+      setSavedScores(prev => prev.filter(s => s.id !== scoreId));
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message || "Failed to delete score", variant: "destructive" });
+    }
   };
 
-  const totalWeight = Object.values(weights).reduce((s, v) => s + (parseFloat(v) || 0), 0);
-  const filledCount = Object.values(scores).filter(v => v.trim() !== "").length;
-  const isFixed = (name: string) => FIXED_ASSESSMENTS.includes(name);
+  const saveEditedScore = async (scoreId: number) => {
+    try {
+      // Re-upload via bulk with single entry — find the score entry
+      const sc = savedScores.find(s => s.id === scoreId);
+      if (!sc) return;
+      await api.uploadAssessmentScore({ student_id: sc.student_id, assessment_type_id: (sc as any).assessment_type_id, score: parseFloat(editingScoreValue), term, academic_year: academicYear });
+      setSavedScores(prev => prev.map(s => s.id === scoreId ? { ...s, score: parseFloat(editingScoreValue) } : s));
+      setEditingScoreId(null);
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message || "Failed to update score", variant: "destructive" });
+    }
+  };
 
-  return (
-    <div className="max-w-3xl mx-auto space-y-4">
-      <div className="flex items-center gap-2">
-        <Upload className="h-6 w-6 text-primary" />
-        <h1 className="text-2xl font-bold">Upload Grades</h1>
+  // Group students by grade -> section -> sub_section
+  const groupedStudents = allStudents.reduce<Record<number, Record<string, Record<string, StudentProfile[]>>>>((acc, s) => {
+    const g = s.grade_level ?? 0;
+    const sec = s.section ?? "—";
+    const sub = s.sub_section ?? "—";
+    if (!acc[g]) acc[g] = {};
+    if (!acc[g][sec]) acc[g][sec] = {};
+    if (!acc[g][sec][sub]) acc[g][sec][sub] = [];
+    acc[g][sec][sub].push(s);
+    return acc;
+  }, {});
+
+  const toggleGrade = (g: number) => setExpandedGrades(prev => { const n = new Set(prev); n.has(g) ? n.delete(g) : n.add(g); return n; });
+  const toggleSection = (key: string) => setExpandedSections(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
+
+  const navItems: { id: NavSection; label: string; icon: React.ElementType }[] = [
+    { id: "grades", label: "Upload Grades", icon: Upload },
+    { id: "students", label: "My Students", icon: Users },
+  ];
+
+  const handleNavClick = (id: NavSection) => { setActiveSection(id); setMobileSidebarOpen(false); };
+
+  if (role !== "teacher") return <p className="text-destructive">Access denied.</p>;
+
+  const renderGradesSection = () => (
+    <div className="space-y-5">
+      <div>
+        <h2 className="text-xl font-bold text-foreground">Upload Grades</h2>
+        <p className="text-sm text-muted-foreground">Select a subject and class to enter scores</p>
       </div>
 
       {/* Filters */}
       <Card className="border-0 shadow-sm">
-        <CardContent className="pt-6 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label className="text-sm font-semibold">Grade Level</Label>
-              <Select value={gradeLevel} onValueChange={v => { setGradeLevel(v); setStream(""); setSection(""); setSelectedSubject(""); setSelectedAssessment(""); setViewAssessment(""); }}>
-                <SelectTrigger className="rounded-xl"><SelectValue placeholder="Select grade" /></SelectTrigger>
+        <CardContent className="pt-5 pb-4 space-y-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Grade</Label>
+              <Select value={selectedGrade?.toString() ?? ""} onValueChange={v => { setSelectedGrade(parseInt(v)); setSelectedSubjectId(null); }}>
+                <SelectTrigger className="rounded-xl"><SelectValue placeholder="Grade" /></SelectTrigger>
+                <SelectContent>{assignments.grades.sort().map(g => <SelectItem key={g} value={String(g)}>Grade {g}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Subject</Label>
+              <Select value={selectedSubjectId?.toString() ?? ""} onValueChange={v => setSelectedSubjectId(parseInt(v))} disabled={!selectedGrade}>
+                <SelectTrigger className="rounded-xl"><SelectValue placeholder="Subject" /></SelectTrigger>
+                <SelectContent>{mySubjects.filter(s => s.grade_level === selectedGrade).map(s => <SelectItem key={s.id} value={String(s.id)}>{s.subject_name}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Section</Label>
+              <Select value={selectedSection} onValueChange={setSelectedSection}>
+                <SelectTrigger className="rounded-xl"><SelectValue placeholder="All sections" /></SelectTrigger>
                 <SelectContent>
-                  {[9,10,11,12].filter(g => assignedGrades.includes(g)).map(g => <SelectItem key={g} value={String(g)}>Grade {g}</SelectItem>)}
-                  {assignedGrades.length === 0 && <SelectItem value="none" disabled>No grades assigned</SelectItem>}
+                  <SelectItem value="">All</SelectItem>
+                  {assignments.sections.map(s => <SelectItem key={s} value={s} className="capitalize">{s}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label className="text-sm font-semibold">Section</Label>
-              <Select value={section} onValueChange={setSection}>
-                <SelectTrigger className="rounded-xl"><SelectValue placeholder="Select section" /></SelectTrigger>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Sub-Section</Label>
+              <Select value={selectedSubSection} onValueChange={setSelectedSubSection}>
+                <SelectTrigger className="rounded-xl"><SelectValue placeholder="All" /></SelectTrigger>
                 <SelectContent>
-                  {assignedSections.map(s => <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>)}
-                  {assignedSections.length === 0 && <SelectItem value="none" disabled>No sections assigned</SelectItem>}
+                  <SelectItem value="">All</SelectItem>
+                  {assignments.subSections.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label className="text-sm font-semibold">Sub-Section (Optional)</Label>
-              <Select value={subSection} onValueChange={setSubSection}>
-                <SelectTrigger className="rounded-xl"><SelectValue placeholder="All sub-sections" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
-                  {["A","B","C","D","E","F","G","H"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            {needsStream && (
-              <div className="space-y-2">
-                <Label className="text-sm font-semibold">Stream</Label>
-                <Select value={stream} onValueChange={setStream}>
-                  <SelectTrigger className="rounded-xl"><SelectValue placeholder="Select stream" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Natural Science">Natural Science</SelectItem>
-                    <SelectItem value="Social Science">Social Science</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-          </div>
-          <div className="space-y-2">
-            <Label className="text-sm font-semibold">Subject</Label>
-            <Select value={selectedSubject} onValueChange={v => { setSelectedSubject(v); setSelectedAssessment(""); setViewAssessment(""); }} disabled={subjects.length === 0}>
-              <SelectTrigger className="rounded-xl"><SelectValue placeholder="Select subject" /></SelectTrigger>
-              <SelectContent>
-                {subjects.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.subject_name}</SelectItem>)}
-              </SelectContent>
-            </Select>
           </div>
         </CardContent>
       </Card>
 
-      {/* Student List — visible as soon as grade + section is selected */}
-      {gradeLevel && section && (
-        <Card className="border-0 shadow-sm overflow-hidden">
-          <CardHeader className="pb-2 pt-4 px-4">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <span className="inline-flex items-center justify-center rounded-lg bg-primary/10 text-primary px-2.5 py-1 text-base font-extrabold">
-                  {students.length}
-                </span>
-                Students — Grade {gradeLevel}
-                <span className="capitalize text-muted-foreground font-normal">· {section}{subSection && subSection !== "all" ? ` / ${subSection}` : ""}</span>
-              </CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent className="p-0">
-            {students.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-5">No students found for this selection.</p>
-            ) : (
-              <div className="divide-y divide-border/50 max-h-56 overflow-y-auto">
-                {students.map((s, i) => (
-                  <div key={s.user_id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/30 transition-colors">
-                    <span className="text-xs text-muted-foreground w-6 shrink-0 font-medium">{i + 1}</span>
-                    <span className="text-sm font-semibold flex-1">{s.full_name}</span>
-                    <span className="text-xs font-mono font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-lg">
-                      {s.admission_number || s.username}
-                    </span>
+      {/* Assessment Setup */}
+      {selectedSubjectId && selectedGrade && (
+        <Collapsible open={assessmentSetupOpen} onOpenChange={setAssessmentSetupOpen}>
+          <Card className="border-0 shadow-sm">
+            <CollapsibleTrigger asChild>
+              <button className="w-full flex items-center justify-between px-5 py-4 hover:bg-muted/30 transition-colors rounded-xl">
+                <div className="flex items-center gap-2">
+                  <Zap className="h-4 w-4 text-primary" />
+                  <span className="font-semibold text-sm">Assessment Setup</span>
+                  <Badge variant="outline" className="text-xs">{assessmentTypes.length} types · {totalWeight}% total</Badge>
+                </div>
+                {assessmentSetupOpen ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+              </button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="px-5 pb-5 space-y-4 border-t border-border/50">
+                {/* Presets */}
+                <div className="flex flex-wrap gap-2 pt-4">
+                  <span className="text-xs text-muted-foreground self-center">Quick add:</span>
+                  {FIXED_ASSESSMENTS.map(name => (
+                    <Button key={name} size="sm" variant="outline" className="rounded-lg text-xs h-7"
+                      onClick={() => addAssessment(name, name === "Final Exam" ? 40 : 30)}>
+                      <Plus className="h-3 w-3 mr-1" />{name}
+                    </Button>
+                  ))}
+                </div>
+
+                {/* Existing assessments */}
+                {assessmentTypes.length > 0 && (
+                  <div className="space-y-2">
+                    {assessmentTypes.map(a => (
+                      <div key={a.id} className="flex items-center gap-3 p-3 rounded-xl bg-muted/30">
+                        {editingAssessmentId === a.id ? (
+                          <>
+                            <Input value={editingAssessmentName} onChange={e => setEditingAssessmentName(e.target.value)} className="h-7 text-sm rounded-lg flex-1" />
+                            <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => saveAssessmentName(a.id)}><Save className="h-3.5 w-3.5 text-emerald-500" /></Button>
+                            <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setEditingAssessmentId(null)}><X className="h-3.5 w-3.5" /></Button>
+                          </>
+                        ) : (
+                          <>
+                            <span className="text-sm font-medium flex-1">{a.assessment_name}</span>
+                            <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => { setEditingAssessmentId(a.id); setEditingAssessmentName(a.assessment_name); }}><Pencil className="h-3 w-3" /></Button>
+                          </>
+                        )}
+                        <Badge variant="outline" className="text-xs shrink-0">{a.weight}%</Badge>
+                        <div className="w-20 hidden sm:block"><Progress value={a.weight} className="h-1.5" /></div>
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={() => deleteAssessment(a.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                      </div>
+                    ))}
+                    {totalWeight !== 100 && (
+                      <p className="text-xs text-amber-500 flex items-center gap-1"><AlertCircle className="h-3 w-3" />Total weight is {totalWeight}% (should be 100%)</p>
+                    )}
                   </div>
-                ))}
+                )}
+
+                {/* Add custom */}
+                <div className="flex gap-2 items-end">
+                  <div className="flex-1 space-y-1">
+                    <Label className="text-xs text-muted-foreground">Name</Label>
+                    <Input value={newAssessmentName} onChange={e => setNewAssessmentName(e.target.value)} placeholder="e.g. Quiz 1" className="rounded-xl h-9 text-sm" />
+                  </div>
+                  <div className="w-24 space-y-1">
+                    <Label className="text-xs text-muted-foreground">Weight %</Label>
+                    <Input type="number" min={1} max={100} value={newAssessmentWeight} onChange={e => setNewAssessmentWeight(parseInt(e.target.value))} className="rounded-xl h-9 text-sm" />
+                  </div>
+                  <Button size="sm" className="rounded-xl gradient-primary border-0 text-white h-9" onClick={() => addAssessment(newAssessmentName, newAssessmentWeight)} disabled={!newAssessmentName.trim()}>
+                    <Plus className="h-4 w-4 mr-1" />Add
+                  </Button>
+                </div>
+              </div>
+            </CollapsibleContent>
+          </Card>
+        </Collapsible>
+      )}
+
+      {/* Score Tabs */}
+      {selectedSubjectId && selectedGrade && assessmentTypes.length > 0 && (
+        <Card className="border-0 shadow-sm">
+          <CardContent className="p-0">
+            {/* Tab bar */}
+            <div className="flex border-b border-border/50">
+              {([["scores", "Enter / Edit Scores", Upload], ["view", "View Uploaded", Eye]] as const).map(([id, label, Icon]) => (
+                <button key={id} onClick={() => setScoreTab(id as ScoreTab)}
+                  className={cn("flex items-center gap-2 px-5 py-3 text-sm font-medium transition-colors border-b-2 -mb-px",
+                    scoreTab === id ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground")}>
+                  <Icon className="h-4 w-4" />{label}
+                </button>
+              ))}
+            </div>
+
+            {/* Enter scores */}
+            {scoreTab === "scores" && (
+              <div className="p-4 space-y-3">
+                {loadingStudents ? <p className="text-center text-muted-foreground py-6">Loading students...</p> : students.length === 0 ? (
+                  <p className="text-center text-muted-foreground py-6">No students found for this selection.</p>
+                ) : (
+                  <>
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-muted/20">
+                            <TableHead className="min-w-[180px]">Student</TableHead>
+                            {assessmentTypes.map(a => <TableHead key={a.id} className="min-w-[110px]">{a.assessment_name} <span className="text-muted-foreground text-xs">({a.weight}%)</span></TableHead>)}
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {students.map(s => (
+                            <TableRow key={s.user_id} className={cn("transition-colors", modifiedStudents.has(s.user_id) && "bg-amber-500/5")}>
+                              <TableCell>
+                                <p className="font-bold text-sm">{s.full_name}</p>
+                                {s.admission_number && <Badge variant="outline" className="text-xs font-mono mt-0.5">{s.admission_number}</Badge>}
+                              </TableCell>
+                              {assessmentTypes.map(a => (
+                                <TableCell key={a.id}>
+                                  <Input
+                                    type="number" min={0} max={100}
+                                    value={scores[s.user_id]?.[a.id] ?? ""}
+                                    onChange={e => handleScoreChange(s.user_id, a.id, e.target.value)}
+                                    className="h-8 w-24 rounded-lg text-sm"
+                                    placeholder="—"
+                                  />
+                                </TableCell>
+                              ))}
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                    <div className="flex justify-end pt-2">
+                      <Button onClick={submitScores} disabled={submitting} className="rounded-xl gradient-primary border-0 text-white">
+                        {submitting ? "Saving..." : <><CheckCircle2 className="h-4 w-4 mr-2" />Save Scores</>}
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* View uploaded */}
+            {scoreTab === "view" && (
+              <div className="p-4">
+                {savedScores.length === 0 ? (
+                  <p className="text-center text-muted-foreground py-6">No scores uploaded yet.</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-muted/20">
+                          <TableHead>Student</TableHead>
+                          <TableHead>Assessment</TableHead>
+                          <TableHead className="text-right">Score</TableHead>
+                          <TableHead className="w-20">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {savedScores.map(sc => (
+                          <TableRow key={sc.id} className="hover:bg-muted/30">
+                            <TableCell>
+                              <p className="font-bold text-sm">{sc.full_name}</p>
+                              <p className="text-xs text-muted-foreground font-mono">{sc.username}</p>
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">{(sc as any).assessment_name ?? "—"}</TableCell>
+                            <TableCell className="text-right">
+                              {editingScoreId === sc.id ? (
+                                <div className="flex items-center justify-end gap-1">
+                                  <Input type="number" min={0} max={100} value={editingScoreValue} onChange={e => setEditingScoreValue(e.target.value)} className="h-7 w-20 rounded-lg text-sm" />
+                                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => saveEditedScore(sc.id)}><Save className="h-3.5 w-3.5 text-emerald-500" /></Button>
+                                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setEditingScoreId(null)}><X className="h-3.5 w-3.5" /></Button>
+                                </div>
+                              ) : (
+                                <Badge className={cn("text-xs", sc.score >= 50 ? "gradient-accent border-0 text-white" : "bg-destructive text-destructive-foreground")}>{sc.score}</Badge>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1">
+                                <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => { setEditingScoreId(sc.id); setEditingScoreValue(String(sc.score)); }}><Pencil className="h-3 w-3" /></Button>
+                                <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={() => deleteScore(sc.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>
         </Card>
       )}
 
-      {selectedSubject && (
-        <div className="space-y-4">
-          {/* Assessment Setup */}
-          <Collapsible open={setupOpen} onOpenChange={setSetupOpen}>
-            <Card className="border-0 shadow-sm">
-              <CollapsibleTrigger asChild>
-                <CardHeader className="cursor-pointer hover:bg-muted/30 transition-colors rounded-t-lg pb-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <CardTitle className="text-base">Assessment Setup</CardTitle>
-                      {Math.abs(totalWeight - 100) < 0.01
-                        ? <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium flex items-center gap-1"><CheckCircle2 className="h-3 w-3" /> Ready</span>
-                        : <span className="text-xs px-2 py-0.5 rounded-full bg-destructive/10 text-destructive font-medium flex items-center gap-1"><AlertCircle className="h-3 w-3" /> {totalWeight}% / 100%</span>}
+      {selectedSubjectId && selectedGrade && assessmentTypes.length === 0 && (
+        <Card className="border-0 shadow-sm">
+          <CardContent className="py-10 text-center text-muted-foreground">
+            <AlertCircle className="h-8 w-8 mx-auto mb-2 opacity-40" />
+            <p className="text-sm">No assessment types set up yet.</p>
+            <p className="text-xs mt-1">Open Assessment Setup above to add types first.</p>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+
+  const renderStudentsSection = () => (
+    <div className="space-y-5">
+      <div>
+        <h2 className="text-xl font-bold text-foreground">My Students</h2>
+        <p className="text-sm text-muted-foreground">{allStudents.length} students across your assigned grades</p>
+      </div>
+
+      {loadingAllStudents ? (
+        <Card className="border-0 shadow-sm"><CardContent className="py-10 text-center text-muted-foreground">Loading students...</CardContent></Card>
+      ) : allStudents.length === 0 ? (
+        <Card className="border-0 shadow-sm">
+          <CardContent className="py-10 text-center text-muted-foreground">
+            <Users className="h-8 w-8 mx-auto mb-2 opacity-40" />
+            <p className="text-sm">No students found for your assigned grades.</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-3">
+          {Object.entries(groupedStudents).sort(([a], [b]) => Number(a) - Number(b)).map(([grade, sections]) => {
+            const gradeNum = Number(grade);
+            const gradeTotal = Object.values(sections).flatMap(subs => Object.values(subs).flat()).length;
+            const isGradeOpen = expandedGrades.has(gradeNum);
+            return (
+              <Card key={grade} className="border-0 shadow-sm overflow-hidden">
+                <button
+                  onClick={() => toggleGrade(gradeNum)}
+                  className="w-full flex items-center justify-between px-5 py-4 hover:bg-muted/30 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="gradient-primary rounded-lg p-2"><BookOpen className="h-4 w-4 text-white" /></div>
+                    <div className="text-left">
+                      <p className="font-bold text-sm">Grade {grade}</p>
+                      <p className="text-xs text-muted-foreground">{gradeTotal} students · {Object.keys(sections).length} sections</p>
                     </div>
-                    {setupOpen ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
                   </div>
-                  <p className="text-xs text-muted-foreground text-left">{assessmentTypes.length} assessment(s) · Weights must total 100%</p>
-                </CardHeader>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <CardContent className="space-y-4 pt-0">
-                  {/* Presets */}
-                  {assessmentTypes.length >= 2 && (
-                    <div className="space-y-2">
-                      <Label className="text-xs text-muted-foreground">Quick Presets</Label>
-                      <div className="flex flex-wrap gap-2">
-                        {[["30","40"],["40","40"]].map(([mid, fin]) => (
-                          <Button key={mid} variant="outline" size="sm" className="rounded-lg h-8 text-xs gap-1" onClick={() => {
-                            const nw: Record<string, string> = {};
-                            assessmentTypes.forEach(a => {
-                              if (a.assessment_name === "Mid Exam") nw[a.id] = mid;
-                              else if (a.assessment_name === "Final Exam") nw[a.id] = fin;
-                              else nw[a.id] = "0";
-                            });
-                            setWeights(nw);
-                          }}>
-                            <Zap className="h-3 w-3" /> Mid {mid} / Final {fin}
-                          </Button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {/* Assessment rows */}
-                  <div className="space-y-3">
-                    {assessmentTypes.map(a => (
-                      <div key={a.id} className="space-y-1.5">
-                        <div className="flex items-center gap-3">
-                          <div className="flex-1 flex items-center gap-2 min-w-0">
-                            {isFixed(a.assessment_name)
-                              ? <><span className="text-sm font-medium">{a.assessment_name}</span><span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">Fixed</span></>
-                              : <Input value={editNames[a.id] || ""} onChange={e => setEditNames(p => ({ ...p, [a.id]: e.target.value }))} className="h-8 text-sm rounded-lg" placeholder="Assessment name" />}
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            <Input type="number" min={0} max={100} value={weights[a.id] || ""} onChange={e => setWeights(p => ({ ...p, [a.id]: e.target.value }))} className="w-20 h-8 text-sm rounded-lg text-center" placeholder="%" />
-                            <span className="text-xs text-muted-foreground">%</span>
-                          </div>
-                          {!isFixed(a.assessment_name)
-                            ? <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => deleteAssessment(a.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
-                            : <div className="w-8" />}
+                  {isGradeOpen ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                </button>
+
+                {isGradeOpen && (
+                  <div className="border-t border-border/50">
+                    {Object.entries(sections).sort().map(([section, subSections]) => {
+                      const sectionKey = `${grade}-${section}`;
+                      const sectionTotal = Object.values(subSections).flat().length;
+                      const isSectionOpen = expandedSections.has(sectionKey);
+                      return (
+                        <div key={section} className="border-b border-border/30 last:border-0">
+                          <button
+                            onClick={() => toggleSection(sectionKey)}
+                            className="w-full flex items-center justify-between px-5 py-3 hover:bg-muted/20 transition-colors"
+                          >
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="text-xs capitalize">{section}</Badge>
+                              <span className="text-xs text-muted-foreground">{sectionTotal} students</span>
+                            </div>
+                            {isSectionOpen ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
+                          </button>
+
+                          {isSectionOpen && (
+                            <div className="px-5 pb-4 space-y-3">
+                              {Object.entries(subSections).sort().map(([sub, studs]) => (
+                                <div key={sub}>
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Sub-Section {sub}</span>
+                                    <Badge className="text-xs gradient-accent border-0 text-white">{studs.length}</Badge>
+                                  </div>
+                                  <div className="space-y-1">
+                                    {studs.map((s, i) => (
+                                      <div key={s.user_id} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-muted/20 hover:bg-muted/40 transition-colors">
+                                        <span className="text-xs text-muted-foreground w-5 text-right shrink-0">{i + 1}.</span>
+                                        <div className="flex-1 min-w-0">
+                                          <p className="font-bold text-sm truncate">{s.full_name}</p>
+                                        </div>
+                                        {s.admission_number && (
+                                          <Badge variant="outline" className="text-xs font-mono shrink-0">{s.admission_number}</Badge>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
-                        <Progress value={parseFloat(weights[a.id] || "0")} className="h-1.5" />
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
-                  {/* Total indicator */}
-                  <div className={cn("flex items-center gap-2 text-sm font-semibold rounded-lg px-3 py-2", Math.abs(totalWeight - 100) < 0.01 ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive")}>
-                    {Math.abs(totalWeight - 100) < 0.01 ? <CheckCircle2 className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
-                    Total: {totalWeight}% {Math.abs(totalWeight - 100) >= 0.01 && `(need ${(100 - totalWeight).toFixed(1)}% more)`}
-                  </div>
-                  {/* Add custom */}
-                  <div className="flex gap-2">
-                    <Input value={newAssessmentName} onChange={e => setNewAssessmentName(e.target.value)} placeholder="e.g. Assignment, Quiz..." className="rounded-lg h-9 text-sm" onKeyDown={e => e.key === "Enter" && addCustomAssessment()} />
-                    <Button size="sm" variant="outline" className="rounded-lg h-9 shrink-0" onClick={addCustomAssessment} disabled={!newAssessmentName.trim()}><Plus className="h-4 w-4 mr-1" /> Add</Button>
-                  </div>
-                  <Button onClick={saveWeights} disabled={savingSetup || Math.abs(totalWeight - 100) > 0.01} className="w-full rounded-xl gradient-primary border-0 text-white h-10 font-semibold">
-                    {savingSetup ? "Saving..." : "Save Assessment Setup"}
-                  </Button>
-                </CardContent>
-              </CollapsibleContent>
-            </Card>
-          </Collapsible>
-
-          {/* Tab switcher */}
-          <div className="flex rounded-xl border overflow-hidden">
-            {([["scores", "Enter / Edit Scores"], ["view", "View Uploaded"]] as [Tab, string][]).map(([id, label]) => (
-              <button key={id} onClick={() => setActiveTab(id)} className={cn("flex-1 py-2.5 text-sm font-semibold transition-colors", activeTab === id ? "bg-primary text-white" : "bg-muted/30 text-muted-foreground hover:bg-muted/60")}>
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {/* ── ENTER / EDIT SCORES TAB ── */}
-          {activeTab === "scores" && (
-            <Card className="border-0 shadow-sm">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Enter / Edit Scores</CardTitle>
-                <p className="text-xs text-muted-foreground">Existing scores are pre-filled. Change any value and save to update.</p>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <Label className="text-sm font-semibold mb-2 block">Assessment</Label>
-                  <Select value={selectedAssessment} onValueChange={setSelectedAssessment} disabled={assessmentTypes.length === 0 || Math.abs(totalWeight - 100) > 0.01}>
-                    <SelectTrigger className="rounded-xl">
-                      <SelectValue placeholder={assessmentTypes.length === 0 ? "Set up assessments first ↑" : Math.abs(totalWeight - 100) > 0.01 ? "Save weights first (must total 100%)" : "Select assessment"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {assessmentTypes.map(a => <SelectItem key={a.id} value={a.id.toString()}>{a.assessment_name} ({Number(a.weight)}%)</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {selectedAssessment && students.length > 0 && (
-                  <>
-                    <div className="flex items-center justify-between text-sm text-muted-foreground px-1">
-                      <span>{students.length} students · Max score: <strong className="text-foreground">{getMaxScore()}</strong></span>
-                      <span>{filledCount} filled · <span className="text-primary font-semibold">{Object.keys(existingScores).length} already saved</span></span>
-                    </div>
-                    <div className="rounded-xl border overflow-hidden">
-                      <Table>
-                        <TableHeader>
-                          <TableRow className="bg-muted/20">
-                            <TableHead className="w-8">#</TableHead>
-                            <TableHead>Student</TableHead>
-                            <TableHead className="w-32">Score / {getMaxScore()}</TableHead>
-                            <TableHead className="w-16 text-center">Status</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {students.map((s, i) => {
-                            const saved = existingScores[s.user_id];
-                            const current = scores[s.user_id] || "";
-                            const isModified = saved !== undefined && current !== "" && parseFloat(current) !== saved;
-                            return (
-                              <TableRow key={s.user_id} className={cn("hover:bg-muted/30", isModified && "bg-amber-500/5")}>
-                                <TableCell className="text-muted-foreground text-sm">{i + 1}</TableCell>
-                                <TableCell>
-                                  <p className="font-semibold text-sm">{s.full_name}</p>
-                                  <p className="text-xs font-mono font-bold text-primary">{s.admission_number || s.username}</p>
-                                </TableCell>
-                                <TableCell>
-                                  <Input type="number" min={0} max={getMaxScore()} value={current} onChange={e => setScores(p => ({ ...p, [s.user_id]: e.target.value }))} placeholder={`0–${getMaxScore()}`} className={cn("rounded-lg h-8 text-sm w-28", isModified && "border-amber-400 focus-visible:ring-amber-400")} />
-                                </TableCell>
-                                <TableCell className="text-center">
-                                  {isModified
-                                    ? <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-600 bg-amber-500/10">Modified</Badge>
-                                    : saved !== undefined
-                                      ? <CheckCircle2 className="h-4 w-4 text-primary mx-auto" />
-                                      : null}
-                                </TableCell>
-                              </TableRow>
-                            );
-                          })}
-                        </TableBody>
-                      </Table>
-                    </div>
-                    <Button onClick={handleBulkSubmit} disabled={submitting || filledCount === 0} className="w-full rounded-xl gradient-primary border-0 text-white h-11 font-semibold">
-                      <Upload className="h-4 w-4 mr-2" />
-                      {submitting ? "Saving..." : `Save / Update ${filledCount} Score(s)`}
-                    </Button>
-                  </>
                 )}
-                {selectedAssessment && students.length === 0 && (
-                  <p className="text-center text-muted-foreground py-6">No students found for the selected grade and section.</p>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
-          {/* ── VIEW UPLOADED TAB ── */}
-          {activeTab === "view" && (
-            <Card className="border-0 shadow-sm">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2"><Eye className="h-4 w-4 text-primary" /> View & Edit Uploaded Scores</CardTitle>
-                <p className="text-xs text-muted-foreground">Click the pencil icon to edit a score, trash to delete it.</p>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <Label className="text-sm font-semibold mb-2 block">Assessment</Label>
-                  <Select value={viewAssessment} onValueChange={setViewAssessment} disabled={assessmentTypes.length === 0}>
-                    <SelectTrigger className="rounded-xl"><SelectValue placeholder="Select assessment to view" /></SelectTrigger>
-                    <SelectContent>
-                      {assessmentTypes.map(a => <SelectItem key={a.id} value={a.id.toString()}>{a.assessment_name} ({Number(a.weight)}%)</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {viewAssessment && (
-                  loadingView ? (
-                    <p className="text-center text-muted-foreground py-6">Loading...</p>
-                  ) : savedScores.length === 0 ? (
-                    <div className="text-center py-8 text-muted-foreground">
-                      <Upload className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                      <p>No scores uploaded yet for this assessment.</p>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="text-sm text-muted-foreground px-1">{savedScores.length} score(s) uploaded</div>
-                      <div className="rounded-xl border overflow-hidden">
-                        <Table>
-                          <TableHeader>
-                            <TableRow className="bg-muted/20">
-                              <TableHead className="w-8">#</TableHead>
-                              <TableHead>Student</TableHead>
-                              <TableHead className="w-36">Score</TableHead>
-                              <TableHead className="w-24 text-center">Actions</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {savedScores.map((s, i) => {
-                              const isEditing = editingScore[s.id] !== undefined;
-                              const maxScore = assessmentTypes.find(a => a.id === parseInt(viewAssessment));
-                              const max = maxScore ? Number(maxScore.weight) : 100;
-                              return (
-                                <TableRow key={s.id} className={cn("hover:bg-muted/30", isEditing && "bg-primary/5")}>
-                                  <TableCell className="text-muted-foreground text-sm">{i + 1}</TableCell>
-                                  <TableCell>
-                                    <p className="font-semibold text-sm">{s.full_name}</p>
-                                    <p className="text-xs font-mono font-bold text-primary">{s.username}</p>
-                                  </TableCell>
-                                  <TableCell>
-                                    {isEditing ? (
-                                      <Input type="number" min={0} max={max} value={editingScore[s.id]} onChange={e => setEditingScore(p => ({ ...p, [s.id]: e.target.value }))} className="rounded-lg h-8 text-sm w-28 border-primary" autoFocus />
-                                    ) : (
-                                      <span className={cn("text-sm font-bold", s.score >= max * 0.5 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive")}>
-                                        {s.score} / {max}
-                                      </span>
-                                    )}
-                                  </TableCell>
-                                  <TableCell>
-                                    <div className="flex items-center justify-center gap-1">
-                                      {isEditing ? (
-                                        <>
-                                          <Button size="icon" variant="ghost" className="h-7 w-7 text-primary hover:text-primary" disabled={savingScore === s.id} onClick={() => saveEditedScore(s.id, s.student_id)}>
-                                            {savingScore === s.id ? <span className="text-[10px]">...</span> : <Save className="h-3.5 w-3.5" />}
-                                          </Button>
-                                          <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground" onClick={() => cancelEditScore(s.id)}>
-                                            <X className="h-3.5 w-3.5" />
-                                          </Button>
-                                        </>
-                                      ) : (
-                                        <>
-                                          <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-primary" onClick={() => startEditScore(s.id, s.score)}>
-                                            <Pencil className="h-3.5 w-3.5" />
-                                          </Button>
-                                          <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => deleteScore(s.id)}>
-                                            <Trash2 className="h-3.5 w-3.5" />
-                                          </Button>
-                                        </>
-                                      )}
-                                    </div>
-                                  </TableCell>
-                                </TableRow>
-                              );
-                            })}
-                          </TableBody>
-                        </Table>
-                      </div>
-                    </>
-                  )
-                )}
-              </CardContent>
-            </Card>
-          )}
+              </Card>
+            );
+          })}
         </div>
       )}
+    </div>
+  );
 
-      <SuccessModal open={!!successModal} onClose={() => setSuccessModal(null)} title={successModal?.title || ""} description={successModal?.description} />
+  return (
+    <div className="flex h-full min-h-screen bg-background">
+      {/* Mobile overlay */}
+      {mobileSidebarOpen && (
+        <div className="fixed inset-0 bg-black/40 z-30 lg:hidden" onClick={() => setMobileSidebarOpen(false)} />
+      )}
+
+      {/* Sidebar */}
+      <aside className={cn(
+        "fixed top-0 left-0 h-full z-40 flex flex-col bg-card border-r border-border/50 shadow-lg transition-all duration-300",
+        "lg:relative lg:z-auto lg:shadow-none",
+        sidebarCollapsed ? "w-16" : "w-56",
+        mobileSidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+      )}>
+        {/* Sidebar header */}
+        <div className="flex items-center justify-between px-4 py-4 border-b border-border/50 shrink-0">
+          {!sidebarCollapsed && <span className="font-bold text-sm text-foreground">Teacher Portal</span>}
+          <button onClick={() => setSidebarCollapsed(p => !p)} className="p-1.5 rounded-lg hover:bg-muted/50 transition-colors hidden lg:block">
+            {sidebarCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+          </button>
+          <button onClick={() => setMobileSidebarOpen(false)} className="p-1.5 rounded-lg hover:bg-muted/50 transition-colors lg:hidden">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Nav items */}
+        <nav className="flex-1 py-3 space-y-1 px-2 overflow-y-auto">
+          {navItems.map(item => {
+            const Icon = item.icon;
+            const isActive = activeSection === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => handleNavClick(item.id)}
+                className={cn(
+                  "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all",
+                  isActive ? "gradient-primary text-white shadow-md" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                )}
+              >
+                <Icon className="h-4 w-4 shrink-0" />
+                {!sidebarCollapsed && <span>{item.label}</span>}
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* Student count badge at bottom */}
+        {!sidebarCollapsed && (
+          <div className="px-4 py-3 border-t border-border/50 shrink-0">
+            <p className="text-xs text-muted-foreground">
+              {assignments.grades.length > 0
+                ? `Grades: ${assignments.grades.sort().map(g => `G${g}`).join(", ")}`
+                : "No grades assigned"}
+            </p>
+          </div>
+        )}
+      </aside>
+
+      {/* Main content */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Mobile topbar */}
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-border/50 lg:hidden">
+          <button onClick={() => setMobileSidebarOpen(true)} className="p-2 rounded-lg hover:bg-muted/50 transition-colors">
+            <Menu className="h-5 w-5" />
+          </button>
+          <span className="font-semibold text-sm capitalize">{activeSection === "grades" ? "Upload Grades" : "My Students"}</span>
+        </div>
+
+        <main className="flex-1 p-4 sm:p-6 overflow-y-auto">
+          {activeSection === "grades" ? renderGradesSection() : renderStudentsSection()}
+        </main>
+      </div>
+
+      <SuccessModal
+        open={!!successModal}
+        title={successModal?.title ?? ""}
+        description={successModal?.description}
+        onClose={() => setSuccessModal(null)}
+      />
     </div>
   );
 }
