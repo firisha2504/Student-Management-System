@@ -7,9 +7,6 @@ export default {
   ],
   theme: {
     extend: {
-      fontFamily: {
-        sans: ['Plus Jakarta Sans', 'system-ui', 'sans-serif'],
-      },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
