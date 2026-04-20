@@ -191,24 +191,6 @@ export default function About() {
         </CardContent>
       </Card>
 
-      {/* Edit / Save Buttons */}
-      <div className="flex gap-3">
-        {editing ? (
-          <>
-            <Button onClick={handleCancel} variant="outline" className="flex-1 rounded-xl" disabled={saving}>
-              <X className="h-4 w-4 mr-1.5" /> Cancel
-            </Button>
-            <Button onClick={handleSave} className="flex-1 rounded-xl gradient-primary border-0 text-white" disabled={saving}>
-              <Save className="h-4 w-4 mr-1.5" /> {saving ? "Saving..." : "Save Changes"}
-            </Button>
-          </>
-        ) : (
-          <Button onClick={() => setEditing(true)} className="w-full rounded-xl gradient-primary border-0 text-white">
-            <Pencil className="h-4 w-4 mr-1.5" /> Edit Profile
-          </Button>
-        )}
-      </div>
-
       {/* Change Password - Available for all users */}
       <Card className="border-0 shadow-md">
         <CardContent className="pt-6 space-y-4">

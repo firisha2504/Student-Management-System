@@ -355,7 +355,14 @@ export default function Admin() {
     setLoadingSubjects(true);
     try {
       const data = await api.getAllSubjects();
-      setSubjects(data);
+      // Sort subjects by grade level, then by subject name
+      const sortedData = data.sort((a: any, b: any) => {
+        if (a.grade_level !== b.grade_level) {
+          return (a.grade_level || 0) - (b.grade_level || 0);
+        }
+        return a.subject_name.localeCompare(b.subject_name);
+      });
+      setSubjects(sortedData);
     } catch (error: any) {
       toast({ title: "Error", description: error.message || "Failed to fetch subjects", variant: "destructive" });
     }
@@ -369,13 +376,37 @@ export default function Admin() {
   }, [activeSection]);
 
   const handleCreateSubject = async () => {
-    if (!subjectForm.subject_name || !subjectForm.subject_code) {
-      toast({ title: "Error", description: "Subject name and code are required", variant: "destructive" });
+    if (!subjectForm.subject_name) {
+      toast({ title: "Error", description: "Subject name is required", variant: "destructive" });
+      return;
+    }
+
+    // Validate stream for Grade 11-12
+    if (subjectForm.grade_level >= 11 && !subjectForm.stream) {
+      toast({ title: "Error", description: "Stream is required for Grade 11 and 12", variant: "destructive" });
       return;
     }
 
     try {
-      await api.createSubject(subjectForm);
+      // Auto-generate subject code with grade level and timestamp for uniqueness
+      const timestamp = Date.now().toString().slice(-4);
+      const subjectCode = subjectForm.subject_name
+        .toLowerCase()
+        .replace(/\s+/g, '')
+        .substring(0, 6) + subjectForm.grade_level + timestamp;
+
+      // Prepare data - ensure stream is null for grades 9-10
+      const dataToSend = {
+        subject_name: subjectForm.subject_name,
+        subject_code: subjectCode,
+        description: subjectForm.description || '',
+        credit_hours: 3,
+        ects: 5,
+        grade_level: subjectForm.grade_level,
+        stream: subjectForm.grade_level >= 11 ? subjectForm.stream : null
+      };
+      
+      await api.createSubject(dataToSend);
       showSuccess("Subject Created", `${subjectForm.subject_name} has been added`);
       setSubjectForm({
         subject_name: "",
@@ -396,10 +427,10 @@ export default function Admin() {
 
   const handleBulkCreateSubjects = async () => {
     // Validate all subjects
-    const validSubjects = bulkSubjects.filter(s => s.subject_name && s.subject_code);
+    const validSubjects = bulkSubjects.filter(s => s.subject_name);
     
     if (validSubjects.length === 0) {
-      toast({ title: "Error", description: "At least one subject with name and code is required", variant: "destructive" });
+      toast({ title: "Error", description: "At least one subject with name is required", variant: "destructive" });
       return;
     }
 
@@ -409,8 +440,28 @@ export default function Admin() {
       
       for (const subject of validSubjects) {
         try {
-          await api.createSubject(subject);
+          // Auto-generate subject code with grade level and timestamp for uniqueness
+          const timestamp = Date.now().toString().slice(-4);
+          const subjectCode = subject.subject_name
+            .toLowerCase()
+            .replace(/\s+/g, '')
+            .substring(0, 6) + subject.grade_level + timestamp;
+
+          const dataToSend = {
+            subject_name: subject.subject_name,
+            subject_code: subjectCode,
+            description: subject.description || '',
+            credit_hours: 3,
+            ects: 5,
+            grade_level: subject.grade_level,
+            stream: subject.grade_level >= 11 ? subject.stream : null
+          };
+
+          await api.createSubject(dataToSend);
           successCount++;
+          
+          // Small delay to ensure unique timestamps
+          await new Promise(resolve => setTimeout(resolve, 10));
         } catch (error) {
           errorCount++;
         }
@@ -1003,84 +1054,50 @@ export default function Admin() {
                 <CardContent className="pt-6 space-y-4">
                   <h3 className="font-semibold text-lg">{editingSubject ? "Edit Subject" : "Create New Subject"}</h3>
                   
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Subject Name</Label>
-                      <Input 
-                        value={subjectForm.subject_name}
-                        onChange={e => setSubjectForm({...subjectForm, subject_name: e.target.value})}
-                        placeholder="e.g., Mathematics"
-                        className="rounded-xl"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Subject Code</Label>
-                      <Input 
-                        value={subjectForm.subject_code}
-                        onChange={e => setSubjectForm({...subjectForm, subject_code: e.target.value})}
-                        placeholder="e.g., MATH101"
-                        className="rounded-xl"
-                      />
-                    </div>
-                  </div>
-
                   <div className="space-y-2">
-                    <Label>Description</Label>
+                    <Label>Subject Name</Label>
                     <Input 
-                      value={subjectForm.description}
-                      onChange={e => setSubjectForm({...subjectForm, description: e.target.value})}
-                      placeholder="Optional description"
+                      value={subjectForm.subject_name}
+                      onChange={e => setSubjectForm({...subjectForm, subject_name: e.target.value})}
+                      placeholder="e.g., Mathematics"
                       className="rounded-xl"
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Credit Hours</Label>
-                      <Input 
-                        type="number"
-                        min="1"
-                        max="10"
-                        value={subjectForm.credit_hours}
-                        onChange={e => setSubjectForm({...subjectForm, credit_hours: parseInt(e.target.value) || 3})}
-                        className="rounded-xl"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Grade Level</Label>
-                      <Select 
-                        value={subjectForm.grade_level.toString()}
-                        onValueChange={v => {
-                          const grade = parseInt(v);
-                          setSubjectForm({
-                            ...subjectForm, 
-                            grade_level: grade,
-                            stream: grade <= 10 ? "" : "Science"
-                          });
-                        }}
-                      >
-                        <SelectTrigger className="rounded-xl">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="9">Grade 9</SelectItem>
-                          <SelectItem value="10">Grade 10</SelectItem>
-                          <SelectItem value="11">Grade 11</SelectItem>
-                          <SelectItem value="12">Grade 12</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+                  <div className="space-y-2">
+                    <Label>Grade Level</Label>
+                    <Select 
+                      value={subjectForm.grade_level.toString()}
+                      onValueChange={v => {
+                        const grade = parseInt(v);
+                        setSubjectForm({
+                          ...subjectForm, 
+                          grade_level: grade,
+                          stream: grade <= 10 ? "" : "Science"
+                        });
+                      }}
+                    >
+                      <SelectTrigger className="rounded-xl">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="9">Grade 9</SelectItem>
+                        <SelectItem value="10">Grade 10</SelectItem>
+                        <SelectItem value="11">Grade 11</SelectItem>
+                        <SelectItem value="12">Grade 12</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   {subjectForm.grade_level >= 11 && (
                     <div className="space-y-2">
-                      <Label>Stream (Grade 11-12 only)</Label>
+                      <Label>Stream (Required for Grade 11-12) <span className="text-destructive">*</span></Label>
                       <Select 
                         value={subjectForm.stream}
                         onValueChange={v => setSubjectForm({...subjectForm, stream: v})}
                       >
                         <SelectTrigger className="rounded-xl">
-                          <SelectValue />
+                          <SelectValue placeholder="Select stream..." />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="Science">Natural Science</SelectItem>
@@ -1154,35 +1171,7 @@ export default function Admin() {
                             className="rounded-lg h-9"
                           />
                         </div>
-                        <div className="col-span-2 space-y-1">
-                          <Label className="text-xs">Code</Label>
-                          <Input
-                            value={subject.subject_code}
-                            onChange={e => {
-                              const updated = [...bulkSubjects];
-                              updated[index].subject_code = e.target.value;
-                              setBulkSubjects(updated);
-                            }}
-                            placeholder="MATH101"
-                            className="rounded-lg h-9"
-                          />
-                        </div>
-                        <div className="col-span-2 space-y-1">
-                          <Label className="text-xs">Credits</Label>
-                          <Input
-                            type="number"
-                            min="1"
-                            max="10"
-                            value={subject.credit_hours}
-                            onChange={e => {
-                              const updated = [...bulkSubjects];
-                              updated[index].credit_hours = parseInt(e.target.value) || 3;
-                              setBulkSubjects(updated);
-                            }}
-                            className="rounded-lg h-9"
-                          />
-                        </div>
-                        <div className="col-span-2 space-y-1">
+                        <div className="col-span-4 space-y-1">
                           <Label className="text-xs">Grade</Label>
                           <Select
                             value={subject.grade_level.toString()}
@@ -1206,7 +1195,7 @@ export default function Admin() {
                           </Select>
                         </div>
                         {subject.grade_level >= 11 && (
-                          <div className="col-span-2 space-y-1">
+                          <div className="col-span-4 space-y-1">
                             <Label className="text-xs">Stream</Label>
                             <Select
                               value={subject.stream}
@@ -1217,7 +1206,7 @@ export default function Admin() {
                               }}
                             >
                               <SelectTrigger className="rounded-lg h-9">
-                                <SelectValue />
+                                <SelectValue placeholder="Select stream..." />
                               </SelectTrigger>
                               <SelectContent>
                                 <SelectItem value="Science">Natural Science</SelectItem>
@@ -1247,7 +1236,7 @@ export default function Admin() {
                       onClick={handleBulkCreateSubjects}
                       className="gradient-primary border-0 text-white rounded-xl"
                     >
-                      Create {bulkSubjects.filter(s => s.subject_name && s.subject_code).length} Subject{bulkSubjects.filter(s => s.subject_name && s.subject_code).length !== 1 ? 's' : ''}
+                      Create {bulkSubjects.filter(s => s.subject_name).length} Subject{bulkSubjects.filter(s => s.subject_name).length !== 1 ? 's' : ''}
                     </Button>
                     <Button
                       variant="outline"
@@ -1277,8 +1266,6 @@ export default function Admin() {
                       <TableHeader>
                         <TableRow className="bg-muted/50">
                           <TableHead>Subject Name</TableHead>
-                          <TableHead>Code</TableHead>
-                          <TableHead className="text-center">Cr.Hr</TableHead>
                           <TableHead>Grade</TableHead>
                           <TableHead>Stream</TableHead>
                           <TableHead>Teachers</TableHead>
@@ -1288,7 +1275,7 @@ export default function Admin() {
                       <TableBody>
                         {subjects.length === 0 ? (
                           <TableRow>
-                            <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                            <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
                               No subjects found. Click "Add Subject" to create one.
                             </TableCell>
                           </TableRow>
@@ -1296,8 +1283,6 @@ export default function Admin() {
                           subjects.map(subject => (
                             <TableRow key={subject.id}>
                               <TableCell className="font-medium">{subject.subject_name}</TableCell>
-                              <TableCell className="font-mono text-sm">{subject.subject_code}</TableCell>
-                              <TableCell className="text-center">{subject.credit_hours}</TableCell>
                               <TableCell>Grade {subject.grade_level || "All"}</TableCell>
                               <TableCell>
                                 <Badge variant="outline" className="rounded-full">

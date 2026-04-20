@@ -98,8 +98,10 @@ export default function TeacherPortal() {
     load();
   }, []);
 
-  // Subjects filtered to teacher's assigned grades
-  const mySubjects = allSubjects.filter(s => assignments.grades.includes(s.grade_level));
+  // Subjects filtered to teacher's assigned subjects only
+  const mySubjects = allSubjects.filter(s => 
+    assignments.subjects.includes(s.id) && assignments.grades.includes(s.grade_level)
+  );
 
   // Load students when grade/section/sub-section changes
   useEffect(() => {
@@ -201,6 +203,18 @@ export default function TeacherPortal() {
 
   const addAssessment = async (name: string, weight: number) => {
     if (!selectedSubjectId || !selectedGrade) return;
+    
+    // Check if adding this assessment would exceed 100%
+    const newTotal = totalWeight + weight;
+    if (newTotal > 100) {
+      toast({ 
+        title: "Cannot Add Assessment", 
+        description: `Total weight would be ${newTotal}%. Maximum is 100%. Current total: ${totalWeight}%`, 
+        variant: "destructive" 
+      });
+      return;
+    }
+    
     try {
       const filters: any = { subject_id: selectedSubjectId, grade_level: selectedGrade, assessment_name: name, weight };
       if (selectedSection) filters.section = selectedSection;
@@ -410,24 +424,61 @@ export default function TeacherPortal() {
                       </div>
                     ))}
                     {totalWeight !== 100 && (
-                      <p className="text-xs text-amber-500 flex items-center gap-1"><AlertCircle className="h-3 w-3" />Total weight is {totalWeight}% (should be 100%)</p>
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs text-amber-500 flex items-center gap-1">
+                          <AlertCircle className="h-3 w-3" />
+                          Total weight is {totalWeight}% (should be 100%)
+                        </p>
+                        <Badge variant="outline" className={cn("text-xs", totalWeight < 100 ? "text-emerald-600" : "text-destructive")}>
+                          {totalWeight < 100 ? `${100 - totalWeight}% remaining` : `${totalWeight - 100}% over limit`}
+                        </Badge>
+                      </div>
+                    )}
+                    {totalWeight === 100 && (
+                      <p className="text-xs text-emerald-600 flex items-center gap-1">
+                        <CheckCircle2 className="h-3 w-3" />
+                        Total weight is exactly 100% ✓
+                      </p>
                     )}
                   </div>
                 )}
 
                 {/* Add custom */}
-                <div className="flex gap-2 items-end">
-                  <div className="flex-1 space-y-1">
-                    <Label className="text-xs text-muted-foreground">Name</Label>
-                    <Input value={newAssessmentName} onChange={e => setNewAssessmentName(e.target.value)} placeholder="e.g. Quiz 1" className="rounded-xl h-9 text-sm" />
+                <div className="space-y-2">
+                  <div className="flex gap-2 items-end">
+                    <div className="flex-1 space-y-1">
+                      <Label className="text-xs text-muted-foreground">Name</Label>
+                      <Input value={newAssessmentName} onChange={e => setNewAssessmentName(e.target.value)} placeholder="e.g. Quiz 1" className="rounded-xl h-9 text-sm" />
+                    </div>
+                    <div className="w-24 space-y-1">
+                      <Label className="text-xs text-muted-foreground">Weight %</Label>
+                      <Input 
+                        type="number" 
+                        min={1} 
+                        max={100 - totalWeight} 
+                        value={newAssessmentWeight} 
+                        onChange={e => {
+                          const val = parseInt(e.target.value);
+                          setNewAssessmentWeight(isNaN(val) ? 0 : val);
+                        }} 
+                        className="rounded-xl h-9 text-sm" 
+                      />
+                    </div>
+                    <Button 
+                      size="sm" 
+                      className="rounded-xl gradient-primary border-0 text-white h-9" 
+                      onClick={() => addAssessment(newAssessmentName, newAssessmentWeight)} 
+                      disabled={!newAssessmentName.trim() || newAssessmentWeight <= 0 || totalWeight + newAssessmentWeight > 100}
+                    >
+                      <Plus className="h-4 w-4 mr-1" />Add
+                    </Button>
                   </div>
-                  <div className="w-24 space-y-1">
-                    <Label className="text-xs text-muted-foreground">Weight %</Label>
-                    <Input type="number" min={1} max={100} value={newAssessmentWeight} onChange={e => setNewAssessmentWeight(parseInt(e.target.value))} className="rounded-xl h-9 text-sm" />
-                  </div>
-                  <Button size="sm" className="rounded-xl gradient-primary border-0 text-white h-9" onClick={() => addAssessment(newAssessmentName, newAssessmentWeight)} disabled={!newAssessmentName.trim()}>
-                    <Plus className="h-4 w-4 mr-1" />Add
-                  </Button>
+                  {newAssessmentWeight > 0 && totalWeight + newAssessmentWeight > 100 && (
+                    <p className="text-xs text-destructive flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" />
+                      Cannot add {newAssessmentWeight}% - would exceed 100% (currently {totalWeight}%)
+                    </p>
+                  )}
                 </div>
               </div>
             </CollapsibleContent>
