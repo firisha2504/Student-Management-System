@@ -201,7 +201,7 @@ export default function RegistrarPortal() {
   useEffect(() => {
     if (activeSection === 'register') {
       api.getNextId('student').then(data => {
-        const num = parseInt(data.nextId.replace('MJ', ''), 10);
+        const num = parseInt(data.nextId.replace('MJS', ''), 10);
         setNextStudentNum(num);
         setUserRows([{ fullName: "", idNumber: String(num).padStart(3, '0'), gender: "" }]);
       }).catch(() => {});
@@ -584,7 +584,7 @@ export default function RegistrarPortal() {
                           </SelectContent>
                         </Select>
                         <div className="flex items-center flex-1">
-                          <span className="bg-muted px-2.5 py-2 rounded-l-xl border border-r-0 border-input text-sm font-mono font-semibold text-muted-foreground">MJ</span>
+                          <span className="bg-muted px-2.5 py-2 rounded-l-xl border border-r-0 border-input text-sm font-mono font-semibold text-muted-foreground">MJS</span>
                           <Input value={row.idNumber} readOnly placeholder="001" className="rounded-l-none rounded-r-xl font-mono bg-muted/50 cursor-not-allowed" />
                         </div>
                         {userRows.length > 1 && <Button variant="ghost" size="icon" onClick={() => removeUserRow(i)} className="shrink-0 text-destructive rounded-xl">✕</Button>}

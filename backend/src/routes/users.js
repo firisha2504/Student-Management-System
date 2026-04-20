@@ -24,7 +24,7 @@ router.get('/', authenticate, authorize('admin', 'registrar', 'director'), async
     const [users] = await pool.query(`
       SELECT 
         u.id as user_id, u.username, u.email, u.created_at,
-        p.full_name, p.phone, p.is_active, p.gender, p.profile_image,
+        p.full_name, p.phone, p.is_active, p.gender, p.profile_image, p.staff_id,
         r.role,
         sp.grade_level, sp.stream, sp.section, sp.sub_section,
         sp.admission_number,
@@ -34,14 +34,14 @@ router.get('/', authenticate, authorize('admin', 'registrar', 'director'), async
       LEFT JOIN user_roles r ON u.id = r.user_id
       LEFT JOIN student_profiles sp ON u.id = sp.user_id
       LEFT JOIN parent_students ps ON u.id = ps.student_id
-      GROUP BY u.id, u.username, u.email, u.created_at, p.full_name, p.phone, p.is_active, p.gender, p.profile_image, r.role, sp.grade_level, sp.stream, sp.section, sp.sub_section, sp.admission_number
+      GROUP BY u.id, u.username, u.email, u.created_at, p.full_name, p.phone, p.is_active, p.gender, p.profile_image, p.staff_id, r.role, sp.grade_level, sp.stream, sp.section, sp.sub_section, sp.admission_number
       ORDER BY u.created_at DESC
     `);
 
-    // id_number: use admission_number for students, otherwise derive from username
+    // id_number: use admission_number for students, staff_id for staff, otherwise username
     const formattedUsers = users.map(user => ({
       ...user,
-      id_number: user.admission_number || user.username
+      id_number: user.admission_number || user.staff_id || user.username
     }));
 
     res.json(formattedUsers);
@@ -107,13 +107,13 @@ router.post('/', authenticate, authorize('admin', 'registrar'), [
 
     // Create profile
     await connection.query(
-      'INSERT INTO profiles (user_id, full_name, phone, address, gender) VALUES (?, ?, ?, ?, ?)',
-      [userId, full_name, phone || null, address || null, gender || null]
+      'INSERT INTO profiles (user_id, full_name, phone, address, gender, staff_id) VALUES (?, ?, ?, ?, ?, ?)',
+      [userId, full_name, phone || null, address || null, gender || null, role === 'student' ? null : generatedId]
     );
 
     // Create student_profiles record if role is student
     if (role === 'student') {
-      const admissionNumber = generatedId; // Use the generated ID (e.g., MJ001)
+      const admissionNumber = generatedId; // Use the generated ID (e.g., MJS001)
       const enrollmentDate = new Date().toISOString().split('T')[0];
       
       await connection.query(

@@ -2,7 +2,7 @@ import pool from '../config/database.js';
 
 // Role prefix mapping
 const ROLE_PREFIXES = {
-  student: 'MJ',
+  student: 'MJS',
   teacher: 'MJT',
   registrar: 'MJR',
   director: 'MJD',

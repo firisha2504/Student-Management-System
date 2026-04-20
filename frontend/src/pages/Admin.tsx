@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { api } from "@/services/api";
+import { api, getAssetUrl } from "@/services/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -140,7 +140,10 @@ export default function Admin() {
       const settings = await api.getSystemSettings();
       setSystemLocked(settings.system_locked === 'true');
       if (settings.school_logo) {
-        setSchoolLogo(`http://localhost:5000${settings.school_logo}`);
+        const logoUrl = getAssetUrl(settings.school_logo);
+        console.log('Logo from DB:', settings.school_logo);
+        console.log('Full logo URL:', logoUrl);
+        setSchoolLogo(logoUrl);
       }
     } catch (error: any) {
       console.error('Failed to fetch system settings:', error);
@@ -167,6 +170,10 @@ export default function Admin() {
   useEffect(() => {
     if (activeSection === "credentials") fetchCredentialsLog();
   }, [activeSection]);
+
+  useEffect(() => {
+    console.log('schoolLogo state changed:', schoolLogo);
+  }, [schoolLogo]);
 
   if (role !== "admin") return <p className="text-destructive">Access denied.</p>;
 
@@ -316,7 +323,7 @@ export default function Admin() {
     setUploadingLogo(true);
     try {
       const result = await api.uploadSchoolLogo(file);
-      setSchoolLogo(`http://localhost:5000${result.logoUrl}`);
+      setSchoolLogo(getAssetUrl(result.logoUrl));
       showSuccess("Logo Uploaded", "School logo has been updated successfully");
       if (logoInputRef.current) logoInputRef.current.value = '';
     } catch (error: any) {
@@ -853,9 +860,21 @@ export default function Admin() {
 
                 {schoolLogo && (
                   <div className="flex items-center gap-4 p-4 bg-muted rounded-xl">
-                    <img src={schoolLogo} alt="School Logo" className="h-16 w-16 object-contain rounded-lg" />
+                    <div className="relative">
+                      <img 
+                        src={schoolLogo} 
+                        alt="School Logo" 
+                        className="h-16 w-16 object-contain rounded-lg border-2 border-primary" 
+                        onError={(e) => {
+                          console.error('Image failed to load:', schoolLogo);
+                          console.error('Error event:', e);
+                        }}
+                        onLoad={() => console.log('Image loaded successfully:', schoolLogo)}
+                      />
+                    </div>
                     <div className="flex-1">
                       <p className="text-sm font-medium">Current Logo</p>
+                      <p className="text-xs text-muted-foreground mt-1">{schoolLogo}</p>
                     </div>
                     <Button 
                       variant="ghost" 
@@ -865,6 +884,12 @@ export default function Admin() {
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
+                  </div>
+                )}
+
+                {!schoolLogo && (
+                  <div className="p-4 bg-muted/50 rounded-xl">
+                    <p className="text-sm text-muted-foreground">No logo uploaded yet</p>
                   </div>
                 )}
 

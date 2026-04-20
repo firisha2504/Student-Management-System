@@ -30,6 +30,13 @@ export default function Register() {
   // Student promoted to grade 11+ but hasn't picked a stream yet
   const needsStreamSelection = hasGradeSet && (profile?.grade_level === 11 || profile?.grade_level === 12) && !profile?.stream;
 
+  // Debug logging
+  console.log('Profile data:', profile);
+  console.log('hasGradeSet:', hasGradeSet);
+  console.log('needsStreamSelection:', needsStreamSelection);
+  console.log('profile?.grade_level:', profile?.grade_level);
+  console.log('profile?.stream:', profile?.stream);
+
   const handleSaveProfile = async () => {
     if (hasGradeSet) return; // Already locked
 
@@ -141,43 +148,19 @@ export default function Register() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  <Label>Section <span className="text-destructive">*</span></Label>
-                  <Select value={section} onValueChange={setSection}>
-                    <SelectTrigger><SelectValue placeholder="Select section" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="oromo">Oromo</SelectItem>
-                      <SelectItem value="amharic">Amharic</SelectItem>
-                      <SelectItem value="somali">Somali</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    onClick={async () => {
-                      if (!section) {
-                        toast({ title: "Error", description: "Please select a section.", variant: "destructive" });
-                        return;
-                      }
-                      setSaving(true);
-                      try {
-                        await api.updateProfile({ section });
-                        showSuccess("Success", "Section saved!");
-                        await refreshProfile();
-                      } catch (error: any) {
-                        toast({ title: "Error", description: error.message || "Failed to save section", variant: "destructive" });
-                      } finally {
-                        setSaving(false);
-                      }
-                    }}
-                    disabled={saving}
-                    className="w-full gradient-primary border-0 text-white"
-                  >
-                    {saving ? "Saving..." : "Save Section"}
-                  </Button>
+                  <Label>Section</Label>
+                  <Input value="Not assigned yet" disabled className="bg-muted/50 text-muted-foreground" />
+                  <p className="text-xs text-muted-foreground">Contact your administrator to assign your section.</p>
                 </div>
               )}
               {profile?.stream ? (
                 <div className="space-y-2">
                   <Label>Stream</Label>
-                  <Input value={profile.stream.charAt(0).toUpperCase() + profile.stream.slice(1)} disabled className="bg-muted/50" />
+                  <Input 
+                    value={profile.stream === 'natural' ? 'Natural Science' : profile.stream === 'social' ? 'Social Science' : profile.stream} 
+                    disabled 
+                    className="bg-muted/50" 
+                  />
                 </div>
               ) : needsStreamSelection ? (
                 <div className="space-y-2">
@@ -185,14 +168,14 @@ export default function Register() {
                   <Select value={stream} onValueChange={setStream}>
                     <SelectTrigger><SelectValue placeholder="Select your stream" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Natural Science">Natural Science</SelectItem>
-                      <SelectItem value="Social Science">Social Science</SelectItem>
+                      <SelectItem value="natural">Natural Science</SelectItem>
+                      <SelectItem value="social">Social Science</SelectItem>
                     </SelectContent>
                   </Select>
-                  <div className="flex items-start gap-2 rounded-xl bg-warning/10 p-3">
-                    <Info className="h-4 w-4 text-warning mt-0.5 shrink-0" />
-                    <p className="text-sm text-warning font-medium">
-                      ⚠️ You've been promoted to Grade {profile?.grade_level}! Please select your stream. This cannot be changed later.
+                  <div className="flex items-start gap-2 rounded-xl bg-primary/10 p-3 border border-primary/20">
+                    <Info className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                    <p className="text-sm text-primary font-medium">
+                      📚 You've been promoted to Grade {profile?.grade_level}! Please select your stream. This is your choice and cannot be changed later.
                     </p>
                   </div>
                   <Button
@@ -204,8 +187,9 @@ export default function Register() {
                       setSaving(true);
                       try {
                         await api.updateProfile({ stream });
-                        showSuccess("Success", "Stream saved!");
                         await refreshProfile();
+                        showSuccess("Stream Selected", "Your stream has been saved and locked successfully!");
+                        setStream(""); // Clear the local state
                       } catch (error: any) {
                         toast({ title: "Error", description: error.message || "Failed to save stream", variant: "destructive" });
                       } finally {
@@ -215,65 +199,33 @@ export default function Register() {
                     disabled={saving}
                     className="w-full gradient-primary border-0 text-white"
                   >
-                    {saving ? "Saving..." : "Save Stream"}
+                    {saving ? "Saving..." : "Save My Stream Choice"}
                   </Button>
                 </div>
               ) : null}
-              {!needsStreamSelection && (
-                <div className="flex items-start gap-2 rounded-xl bg-muted/50 p-3">
-                  <Info className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-                  <p className="text-sm text-muted-foreground">
-                    Grade and stream are locked after first selection. Contact your admin if you need to change them.
-                  </p>
-                </div>
-              )}
+              <div className="flex items-start gap-2 rounded-xl bg-muted/50 p-3">
+                <Info className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                <p className="text-sm text-muted-foreground">
+                  Grade and section are managed by administrators. You can select your stream when promoted to Grade 11 or 12.
+                </p>
+              </div>
             </>
           ) : (
             <>
               <div className="space-y-2">
-                <Label>Grade Level <span className="text-destructive">*</span></Label>
-                <Select value={gradeLevel} onValueChange={(v) => { setGradeLevel(v); if (v !== "11" && v !== "12") setStream(""); }}>
-                  <SelectTrigger><SelectValue placeholder="Select your grade level" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="9">Grade 9</SelectItem>
-                    <SelectItem value="10">Grade 10</SelectItem>
-                    <SelectItem value="11">Grade 11</SelectItem>
-                    <SelectItem value="12">Grade 12</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label>Grade Level</Label>
+                <Input value="Not assigned yet" disabled className="bg-muted/50 text-muted-foreground" />
               </div>
-              {needsStream && (
-                <div className="space-y-2">
-                  <Label>Stream <span className="text-destructive">*</span></Label>
-                  <Select value={stream} onValueChange={setStream}>
-                    <SelectTrigger><SelectValue placeholder="Select your stream" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Natural Science">Natural Science</SelectItem>
-                      <SelectItem value="Social Science">Social Science</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
               <div className="space-y-2">
-                <Label>Section <span className="text-destructive">*</span></Label>
-                <Select value={section} onValueChange={setSection}>
-                  <SelectTrigger><SelectValue placeholder="Select your section" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="oromo">Oromo</SelectItem>
-                    <SelectItem value="amharic">Amharic</SelectItem>
-                    <SelectItem value="somali">Somali</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label>Section</Label>
+                <Input value="Not assigned yet" disabled className="bg-muted/50 text-muted-foreground" />
               </div>
-              <div className="flex items-start gap-2 rounded-xl bg-warning/10 p-3">
-                <Info className="h-4 w-4 text-warning mt-0.5 shrink-0" />
-                <p className="text-sm text-warning font-medium">
-                  ⚠️ Choose carefully! Once saved, your grade and stream cannot be changed.
+              <div className="flex items-start gap-2 rounded-xl bg-primary/10 p-3 border border-primary/20">
+                <Info className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                <p className="text-sm text-primary font-medium">
+                  Your grade and section will be assigned by your administrator. Please wait for assignment.
                 </p>
               </div>
-              <Button onClick={handleSaveProfile} disabled={saving} className="w-full gradient-primary border-0 text-white">
-                {saving ? "Saving..." : "Save Grade & Stream"}
-              </Button>
             </>
           )}
         </CardContent>

@@ -92,9 +92,9 @@ export default function About() {
   };
 
   const infoItems = [
-    { icon: User, label: "Full Name", value: profile?.full_name, editable: true },
-    { icon: User, label: "Username", value: user?.username, editable: isAdmin },
-    { icon: CreditCard, label: "ID Number", value: user?.username, editable: isAdmin },
+    { icon: User, label: "Full Name", value: profile?.full_name, editable: false },
+    { icon: User, label: "Username", value: user?.username, editable: false },
+    { icon: CreditCard, label: "ID Number", value: user?.id_number || user?.username, editable: false },
     { icon: ShieldCheck, label: "Status", value: profile?.is_active ? "Active" : "Inactive", editable: false },
   ];
 
@@ -209,7 +209,7 @@ export default function About() {
         )}
       </div>
 
-      {/* Change Password */}
+      {/* Change Password - Available for all users */}
       <Card className="border-0 shadow-md">
         <CardContent className="pt-6 space-y-4">
           <div className="flex items-center gap-3">
@@ -290,8 +290,8 @@ export default function About() {
         </CardContent>
       </Card>
 
-      {/* Change Login Username - Admin only */}
-      {isAdmin && (
+      {/* Change Login Username - Staff only (not students) */}
+      {role !== 'student' && (
         <Card className="border-0 shadow-md">
           <CardContent className="pt-6 space-y-4">
             <div className="flex items-center gap-3">

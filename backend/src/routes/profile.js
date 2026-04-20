@@ -77,10 +77,14 @@ router.patch('/me', authenticate, [
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
+      console.error('Validation errors:', errors.array());
       return res.status(400).json({ errors: errors.array() });
     }
 
     const { full_name, phone, address, date_of_birth, gender, grade_level, stream, section } = req.body;
+    
+    console.log('Profile update request:', { full_name, phone, address, date_of_birth, gender, grade_level, stream, section });
+    console.log('User ID:', req.user.id);
     
     await connection.beginTransaction();
     
@@ -95,6 +99,7 @@ router.patch('/me', authenticate, [
     if (Object.keys(profileUpdates).length > 0) {
       const setClause = Object.keys(profileUpdates).map(key => `${key} = ?`).join(', ');
       const values = [...Object.values(profileUpdates), req.user.id];
+      console.log('Updating profiles table:', setClause, values);
       await connection.query(
         `UPDATE profiles SET ${setClause} WHERE user_id = ?`,
         values
@@ -111,14 +116,17 @@ router.patch('/me', authenticate, [
       if (Object.keys(studentUpdates).length > 0) {
         const setClause = Object.keys(studentUpdates).map(key => `${key} = ?`).join(', ');
         const values = [...Object.values(studentUpdates), req.user.id];
-        await connection.query(
+        console.log('Updating student_profiles table:', setClause, values);
+        const [result] = await connection.query(
           `UPDATE student_profiles SET ${setClause} WHERE user_id = ?`,
           values
         );
+        console.log('Update result:', result);
       }
     }
 
     await connection.commit();
+    console.log('Profile updated successfully');
     res.json({ message: 'Profile updated successfully' });
   } catch (error) {
     await connection.rollback();

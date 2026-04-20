@@ -92,9 +92,11 @@ router.get('/me', authenticate, async (req, res) => {
       SELECT 
         p.*,
         u.username,
+        sp.admission_number,
         sp.grade_level,
         sp.stream,
-        sp.section
+        sp.section,
+        sp.sub_section
       FROM profiles p
       INNER JOIN users u ON p.user_id = u.id
       LEFT JOIN student_profiles sp ON p.user_id = sp.user_id
@@ -113,8 +115,17 @@ router.get('/me', authenticate, async (req, res) => {
       profile.profile_image = `http://localhost:${process.env.PORT || 5000}${profile.profile_image}`;
     }
 
+    // Add id_number field: 
+    // - For students: use admission_number
+    // - For staff: use staff_id
+    // - Fallback: use username
+    const user = {
+      ...req.user,
+      id_number: profile?.admission_number || profile?.staff_id || req.user.username
+    };
+
     res.json({
-      user: req.user,
+      user,
       profile,
       role: roles[0]?.role || null
     });

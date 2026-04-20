@@ -1,15 +1,30 @@
-import { ReactNode, useState } from "react";
+import { ReactNode, useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useTheme } from "@/hooks/useTheme";
 import { Button } from "@/components/ui/button";
 import { NavLink } from "@/components/NavLink";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Home, BookOpen, User, Shield, LogOut, GraduationCap, Sun, Moon, ClipboardList, Eye as EyeIcon, Users, FileCheck } from "lucide-react";
+import { api, getAssetUrl } from "@/services/api";
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   const { profile, role, signOut } = useAuth();
   const { theme, toggleTheme } = useTheme();
-  const [schoolLogo] = useState<string | null>(null);
+  const [schoolLogo, setSchoolLogo] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchLogo = async () => {
+      try {
+        const settings = await api.getSystemSettings();
+        if (settings.school_logo) {
+          setSchoolLogo(getAssetUrl(settings.school_logo));
+        }
+      } catch (error) {
+        console.error('Failed to fetch school logo:', error);
+      }
+    };
+    fetchLogo();
+  }, []);
 
   const initials = profile?.full_name
     ?.split(" ")

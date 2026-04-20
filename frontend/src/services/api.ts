@@ -1,8 +1,18 @@
 // API service for backend communication
 const API_BASE_URL = 'http://localhost:5000/api';
+const BACKEND_URL = 'http://localhost:5000';
 
 // Get auth token from localStorage
 const getAuthToken = () => localStorage.getItem('auth_token');
+
+// Helper to construct full asset URLs
+export const getAssetUrl = (path: string | null) => {
+  if (!path) return null;
+  // If path already includes http, return as is
+  if (path.startsWith('http')) return path;
+  // Otherwise, prepend backend URL
+  return `${BACKEND_URL}${path}`;
+};
 
 // API request helper
 async function apiRequest(endpoint: string, options: RequestInit = {}) {
