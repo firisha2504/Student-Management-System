@@ -30,13 +30,6 @@ export default function Register() {
   // Student promoted to grade 11+ but hasn't picked a stream yet
   const needsStreamSelection = hasGradeSet && (profile?.grade_level === 11 || profile?.grade_level === 12) && !profile?.stream;
 
-  // Debug logging
-  console.log('Profile data:', profile);
-  console.log('hasGradeSet:', hasGradeSet);
-  console.log('needsStreamSelection:', needsStreamSelection);
-  console.log('profile?.grade_level:', profile?.grade_level);
-  console.log('profile?.stream:', profile?.stream);
-
   const handleSaveProfile = async () => {
     if (hasGradeSet) return; // Already locked
 
