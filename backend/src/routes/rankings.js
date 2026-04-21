@@ -135,7 +135,7 @@ router.post('/approve', authenticate, authorize('director'), async (req, res) =>
     await pool.query(
       `INSERT INTO ranking_approvals (grade_level, stream, term, academic_year, approved_by)
        VALUES (?, ?, ?, ?, ?)`,
-      [grade_level, stream || null, term, academic_year, req.user.userId]
+      [grade_level, stream || null, term, academic_year, req.userId]
     );
     
     res.json({ message: 'Rankings published successfully' });

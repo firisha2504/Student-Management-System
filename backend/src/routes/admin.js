@@ -248,6 +248,8 @@ router.patch('/system-settings', authenticate, authorize('admin'), async (req, r
 // Get dashboard statistics
 router.get('/dashboard-stats', authenticate, authorize('admin', 'director', 'registrar'), async (req, res) => {
   try {
+    const { grade_level, stream } = req.query;
+    
     // Total counts
     const [userCounts] = await pool.query(`
       SELECT 
@@ -256,6 +258,36 @@ router.get('/dashboard-stats', authenticate, authorize('admin', 'director', 'reg
       FROM user_roles
       GROUP BY role
     `);
+
+    // Build WHERE clause for filters
+    let studentFilter = 'WHERE ur.role = \'student\'';
+    const filterParams = [];
+    
+    if (grade_level && grade_level !== 'all') {
+      studentFilter += ' AND sp.grade_level = ?';
+      filterParams.push(parseInt(grade_level));
+    }
+    
+    if (stream && stream !== 'all') {
+      studentFilter += ' AND sp.stream = ?';
+      filterParams.push(stream);
+    }
+
+    // Gender statistics from profiles table with filters
+    const genderQuery = `
+      SELECT 
+        COALESCE(LOWER(p.gender), 'unknown') as gender,
+        COUNT(*) as count
+      FROM profiles p
+      INNER JOIN user_roles ur ON p.user_id = ur.user_id
+      LEFT JOIN student_profiles sp ON p.user_id = sp.user_id
+      ${studentFilter}
+      GROUP BY COALESCE(LOWER(p.gender), 'unknown')
+    `;
+    
+    const [genderStats] = await pool.query(genderQuery, filterParams);
+
+    console.log('Raw gender stats from DB:', genderStats);
 
     const [gradeStats] = await pool.query(`
       SELECT 
@@ -279,13 +311,25 @@ router.get('/dashboard-stats', authenticate, authorize('admin', 'director', 'reg
 
     const stats = {
       users: {},
+      totalStudents: 0,
+      totalTeachers: 0,
+      genderStats: genderStats
+        .filter(g => g.gender !== 'unknown') // Exclude unknown gender from chart
+        .map(g => ({
+          name: g.gender.charAt(0).toUpperCase() + g.gender.slice(1),
+          value: parseInt(g.count)
+        })),
       grades: gradeStats[0] || {},
       subjectAverages: subjectAverages || []
     };
 
     userCounts.forEach(item => {
       stats.users[item.role] = item.count;
+      if (item.role === 'student') stats.totalStudents = item.count;
+      if (item.role === 'teacher') stats.totalTeachers = item.count;
     });
+
+    console.log('Sending gender stats to frontend:', stats.genderStats);
 
     res.json(stats);
   } catch (error) {
@@ -345,6 +389,29 @@ router.delete('/delete-logo', authenticate, authorize('admin'), async (req, res)
   } catch (error) {
     console.error('Delete logo error:', error);
     res.status(500).json({ error: 'Failed to delete logo' });
+  }
+});
+
+// Debug endpoint to check student profiles
+router.get('/debug/students', authenticate, authorize('admin', 'director'), async (req, res) => {
+  try {
+    const [students] = await pool.query(`
+      SELECT 
+        u.id,
+        u.username,
+        p.full_name,
+        p.gender,
+        ur.role
+      FROM users u
+      INNER JOIN profiles p ON u.id = p.user_id
+      INNER JOIN user_roles ur ON u.id = ur.user_id
+      WHERE ur.role = 'student'
+      ORDER BY u.id
+    `);
+    res.json(students);
+  } catch (error) {
+    console.error('Debug students error:', error);
+    res.status(500).json({ error: 'Failed to fetch students' });
   }
 });
 

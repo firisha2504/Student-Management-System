@@ -171,8 +171,13 @@ export const api = {
     });
   },
 
-  async getDashboardStats() {
-    return apiRequest('/admin/dashboard-stats');
+  async getDashboardStats(filters?: { grade_level?: string; stream?: string }) {
+    const params = new URLSearchParams();
+    if (filters?.grade_level) params.append('grade_level', filters.grade_level);
+    if (filters?.stream) params.append('stream', filters.stream);
+    
+    const queryString = params.toString();
+    return apiRequest(`/admin/dashboard-stats${queryString ? '?' + queryString : ''}`);
   },
 
   // Students

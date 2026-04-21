@@ -174,15 +174,16 @@ export default function DirectorPortal() {
 
   const fetchStats = async () => {
     try {
-      const statsData = await api.getDashboardStats();
+      const filters: any = {};
+      if (perfGrade !== 'all') filters.grade_level = perfGrade;
+      if (perfStream !== 'all') filters.stream = perfStream;
+      
+      const statsData = await api.getDashboardStats(filters);
       const totalStudents = statsData.totalStudents || 0;
       const totalTeachers = statsData.totalTeachers || 0;
 
-      // Use mock data for now - full implementation requires additional backend endpoints
-      const genderStats = [
-        { name: "Male", value: Math.floor(totalStudents * 0.52) },
-        { name: "Female", value: Math.floor(totalStudents * 0.48) },
-      ];
+      // Use real gender stats from backend if available
+      const genderStats = statsData.genderStats || [];
 
       const subjectAverages = [
         { name: "Mathematics", average: 75 },
@@ -682,7 +683,7 @@ export default function DirectorPortal() {
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="h-72">
+                      <div className="h-48">
                         <ResponsiveContainer width="100%" height="100%">
                           <BarChart data={stats.subjectAverages} margin={{ top: 5, right: 20, left: 0, bottom: 40 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
@@ -713,24 +714,23 @@ export default function DirectorPortal() {
                         </CardTitle>
                       </CardHeader>
                       <CardContent>
-                        <div className="h-64">
+                        <div className="h-52">
                           <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
                               <Pie
                                 data={stats.scoreDistribution.filter(d => d.count > 0)}
                                 cx="50%" cy="50%"
-                                innerRadius={50} outerRadius={90}
+                                innerRadius={45} outerRadius={75}
                                 paddingAngle={3}
                                 dataKey="count"
                                 nameKey="range"
-                                label={({ range, count }) => `${range}: ${count}`}
                               >
                                 {stats.scoreDistribution.filter(d => d.count > 0).map((_, i) => (
                                   <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
                                 ))}
                               </Pie>
                               <Tooltip contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "0.75rem" }} />
-                              <Legend />
+                              <Legend verticalAlign="bottom" height={36} />
                             </PieChart>
                           </ResponsiveContainer>
                         </div>
@@ -748,17 +748,16 @@ export default function DirectorPortal() {
                         </CardTitle>
                       </CardHeader>
                       <CardContent>
-                        <div className="h-44">
+                        <div className="h-40">
                           <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
                               <Pie
                                 data={stats.genderStats}
                                 cx="50%" cy="50%"
-                                innerRadius={35} outerRadius={65}
+                                innerRadius={30} outerRadius={55}
                                 paddingAngle={3}
                                 dataKey="value"
                                 nameKey="name"
-                                label={({ name, value }) => `${name}: ${value}`}
                               >
                                 {stats.genderStats.map((entry, i) => (
                                   <Cell
@@ -772,12 +771,12 @@ export default function DirectorPortal() {
                                 ))}
                               </Pie>
                               <Tooltip contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "0.75rem" }} />
-                              <Legend />
+                              <Legend verticalAlign="bottom" height={20} />
                             </PieChart>
                           </ResponsiveContainer>
                         </div>
                         {/* Summary counts */}
-                        <div className="flex justify-center gap-6 mt-2">
+                        <div className="flex justify-center gap-6 mt-1">
                           {stats.genderStats.map(g => (
                             <div key={g.name} className="text-center">
                               <p className="text-xl font-extrabold text-foreground">{g.value}</p>
@@ -800,7 +799,7 @@ export default function DirectorPortal() {
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="h-64">
+                      <div className="h-48">
                         <ResponsiveContainer width="100%" height="100%">
                           <LineChart data={stats.yearlyTrends} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
