@@ -180,21 +180,31 @@ router.get('/scores', authenticate, async (req, res) => {
     const userRole = req.userRole;
     const userId = req.userId;
 
+    console.log('GET /scores - Role:', userRole, 'User ID:', userId);
+
     let query = `
       SELECT 
         s.*,
         at.assessment_name,
         at.weight,
-        sub.subject_name
+        at.teacher_id,
+        sub.subject_name,
+        p.full_name,
+        u.username,
+        sp.admission_number
       FROM assessment_scores s
       INNER JOIN assessment_types at ON s.assessment_type_id = at.id
       INNER JOIN subjects sub ON at.subject_id = sub.id
+      INNER JOIN users u ON s.student_id = u.id
+      INNER JOIN profiles p ON u.id = p.user_id
+      LEFT JOIN student_profiles sp ON u.id = sp.user_id
       WHERE 1=1
     `;
     const params = [];
 
     // If teacher, only show scores for their own assessment types
     if (userRole === 'teacher') {
+      console.log('Filtering by teacher_id:', userId);
       query += ' AND at.teacher_id = ?';
       params.push(userId);
     }
@@ -221,7 +231,12 @@ router.get('/scores', authenticate, async (req, res) => {
 
     query += ' ORDER BY s.created_at DESC';
 
+    console.log('Query:', query);
+    console.log('Params:', params);
+
     const [scores] = await pool.query(query, params);
+    console.log(`Found ${scores.length} scores`);
+    
     res.json(scores);
   } catch (error) {
     console.error('Get assessment scores error:', error);

@@ -330,8 +330,15 @@ export default function DirectorPortal() {
       if (rankSection && rankSection !== "all") filters.section = rankSection;
       if (rankSubSection && rankSubSection !== "all") filters.sub_section = rankSubSection;
       
-      const data = await api.getRankings(filters);
-      setRankings(data || []);
+      const response = await api.getRankings(filters);
+      // Backend returns { approved: true, rankings: [...] }
+      const rankingsData = response.rankings || [];
+      // Map average_score to average for frontend compatibility
+      const mappedRankings = rankingsData.map((r: any) => ({
+        ...r,
+        average: r.average_score || r.average
+      }));
+      setRankings(mappedRankings);
 
       const approvalStatus = await api.getRankingApprovalStatus(filters);
       setRankingsPublished(approvalStatus?.approved || false);

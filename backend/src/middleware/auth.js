@@ -20,8 +20,17 @@ export const authenticate = async (req, res, next) => {
       return res.status(401).json({ error: 'User not found' });
     }
 
+    // Get user role
+    const [userRoles] = await pool.query(
+      'SELECT role FROM user_roles WHERE user_id = ?',
+      [decoded.userId]
+    );
+
     req.user = users[0];
     req.userId = decoded.userId;
+    req.userRole = userRoles.length > 0 ? userRoles[0].role : null;
+    req.userRoles = userRoles.map(r => r.role);
+    
     next();
   } catch (error) {
     res.status(401).json({ error: 'Invalid or expired token' });

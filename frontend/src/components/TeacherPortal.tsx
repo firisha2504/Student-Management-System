@@ -590,10 +590,8 @@ export default function TeacherPortal() {
 
                       {/* Students — only shown when expanded */}
                       {expandedSubjects.has(subjectName) && Object.entries(studentMap).map(([studentId, { full_name, username, admission_number, scores: studentScores }]) => {
-                        const total = studentScores.reduce((sum, sc) => {
-                          const at = assessmentTypes.find(a => a.id === (sc as any).assessment_type_id);
-                          return sum + (at ? (sc.score * at.weight) / 100 : 0);
-                        }, 0);
+                        // Scores are already weighted (out of the weight), so just sum them
+                        const total = studentScores.reduce((sum, sc) => sum + Number(sc.score), 0);
 
                         return (
                           <div key={studentId} className="border-b border-border/30 last:border-0">

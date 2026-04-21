@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { ListChecks, Eye, EyeOff } from "lucide-react";
+import { ListChecks, Eye, EyeOff, ChevronRight, ChevronDown } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import StudentRanking from "@/components/StudentRanking";
 import AcademicHistory from "@/components/AcademicHistory";
@@ -47,6 +47,7 @@ export default function StudentPortal() {
   const [breakdowns, setBreakdowns] = useState<SubjectBreakdown[]>([]);
   const [loading, setLoading] = useState(true);
   const [openSubjects, setOpenSubjects] = useState<Set<number>>(new Set());
+  const [collapsedTeachers, setCollapsedTeachers] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     // Wait for auth to finish loading
@@ -168,6 +169,15 @@ export default function StudentPortal() {
     });
   };
 
+  const toggleTeacher = (teacher: string) => {
+    setCollapsedTeachers(prev => {
+      const next = new Set(prev);
+      if (next.has(teacher)) next.delete(teacher);
+      else next.add(teacher);
+      return next;
+    });
+  };
+
   // Group breakdowns by teacher
   const teacherGroups: Record<string, SubjectBreakdown[]> = {};
   breakdowns.forEach(bd => {
@@ -232,6 +242,7 @@ export default function StudentPortal() {
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/50">
+                  <TableHead className="font-semibold w-[40px]"></TableHead>
                   <TableHead className="font-semibold">Teacher</TableHead>
                   <TableHead className="font-semibold">Subject</TableHead>
                   <TableHead className="font-semibold">Grade</TableHead>
@@ -240,129 +251,163 @@ export default function StudentPortal() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {teacherEntries.map(([teacher, bds]) =>
-                  bds.map((bd, idx) => {
-                    const s = bd.subject;
-                    const hasAssessments = bd.assessments.length > 0;
-                    return (
-                      <Collapsible
-                        key={s.id}
-                        asChild
-                        open={openSubjects.has(s.id)}
-                        onOpenChange={() => toggleSubject(s.id)}
-                      >
-                        <>
-                          <TableRow className="hover:bg-muted/50">
-                            {idx === 0 ? (
-                              <TableCell
-                                className="text-sm font-semibold align-top border-r border-border/50"
-                                rowSpan={bds.length}
-                              >
-                                {teacher}
-                              </TableCell>
-                            ) : null}
-                            <TableCell className="text-sm">{s.subject_name}</TableCell>
-                            <TableCell className="text-sm">Grade {s.grade_level}</TableCell>
-                            <TableCell className="text-sm">
-                              {s.stream ? s.stream.charAt(0).toUpperCase() + s.stream.slice(1) : "—"}
-                            </TableCell>
-                            <TableCell className="text-center">
-                              {hasAssessments ? (
-                                <CollapsibleTrigger asChild>
-                                  <button
-                                    className="inline-flex items-center justify-center rounded-lg p-1.5 hover:bg-muted transition-colors"
-                                    title="View assessments"
+                {teacherEntries.map(([teacher, bds]) => {
+                  const isTeacherCollapsed = collapsedTeachers.has(teacher);
+                  return (
+                    <>
+                      {bds.map((bd, idx) => {
+                        const s = bd.subject;
+                        const hasAssessments = bd.assessments.length > 0;
+                        
+                        // Only show first row when collapsed
+                        if (isTeacherCollapsed && idx > 0) return null;
+                        
+                        return (
+                          <Collapsible
+                            key={s.id}
+                            asChild
+                            open={openSubjects.has(s.id)}
+                            onOpenChange={() => toggleSubject(s.id)}
+                          >
+                            <>
+                              <TableRow className="hover:bg-muted/50">
+                                {idx === 0 ? (
+                                  <TableCell
+                                    className="text-center align-top border-r border-border/50 cursor-pointer hover:bg-muted/70 transition-colors"
+                                    rowSpan={isTeacherCollapsed ? 1 : bds.length}
+                                    onClick={() => toggleTeacher(teacher)}
                                   >
-                                    {openSubjects.has(s.id) ? (
-                                      <EyeOff className="h-4 w-4 text-muted-foreground" />
-                                    ) : (
-                                      <Eye className="h-4 w-4 text-primary" />
-                                    )}
-                                  </button>
-                                </CollapsibleTrigger>
-                              ) : (
-                                <span className="text-xs text-muted-foreground">—</span>
-                              )}
-                            </TableCell>
-                          </TableRow>
-                          <CollapsibleContent asChild>
-                            <tr>
-                              <td colSpan={5} className="p-0">
-                                {bd.assessments.length > 0 && (
-                                  <div className="mx-4 my-3 rounded-xl border border-border/60 bg-card/80 backdrop-blur-sm overflow-hidden shadow-sm">
-                                    <div className="grid grid-cols-3 gap-0 text-xs font-semibold text-muted-foreground uppercase tracking-wider px-4 py-2.5 bg-muted/40 border-b border-border/40">
-                                      <span>Assessment</span>
-                                      <span className="text-center">Weight</span>
-                                      <span className="text-right">Score</span>
+                                    <button
+                                      className="inline-flex items-center justify-center rounded-lg p-1.5 hover:bg-muted transition-colors"
+                                      title={isTeacherCollapsed ? "Expand teacher group" : "Collapse teacher group"}
+                                    >
+                                      {isTeacherCollapsed ? (
+                                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                                      ) : (
+                                        <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                                      )}
+                                    </button>
+                                  </TableCell>
+                                ) : null}
+                                {idx === 0 ? (
+                                  <TableCell
+                                    className="text-sm font-semibold align-top border-r border-border/50"
+                                    rowSpan={isTeacherCollapsed ? 1 : bds.length}
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <span>{teacher}</span>
+                                      {isTeacherCollapsed && bds.length > 1 && (
+                                        <Badge variant="secondary" className="text-xs">
+                                          {bds.length} subjects
+                                        </Badge>
+                                      )}
                                     </div>
-                                    <div className="divide-y divide-border/30">
-                                      {bd.assessments.map((a, i) => (
-                                        <div
-                                          key={i}
-                                          className="grid grid-cols-3 gap-0 items-center px-4 py-2.5 hover:bg-muted/20 transition-colors"
-                                        >
-                                          <span className="text-sm font-medium text-foreground">
-                                            {a.assessment_name}
-                                          </span>
-                                          <span className="text-sm text-center text-muted-foreground">
-                                            {a.weight}%
-                                          </span>
-                                          <div className="text-right">
-                                            {a.score >= 0 ? (
-                                              <Badge
-                                                variant="outline"
-                                                className={`text-xs font-bold ${
-                                                  a.score >= a.weight * 0.5
-                                                    ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-400"
-                                                    : "bg-destructive/10 text-destructive border-destructive/30"
-                                                }`}
-                                              >
-                                                {a.score}/{a.weight}
-                                              </Badge>
-                                            ) : (
-                                              <Badge
-                                                variant="outline"
-                                                className="text-xs text-muted-foreground border-border/50"
-                                              >
-                                                Pending
-                                              </Badge>
-                                            )}
-                                          </div>
+                                  </TableCell>
+                                ) : null}
+                                <TableCell className="text-sm">{s.subject_name}</TableCell>
+                                <TableCell className="text-sm">Grade {s.grade_level}</TableCell>
+                                <TableCell className="text-sm">
+                                  {s.stream ? s.stream.charAt(0).toUpperCase() + s.stream.slice(1) : "—"}
+                                </TableCell>
+                                <TableCell className="text-center">
+                                  {hasAssessments ? (
+                                    <CollapsibleTrigger asChild>
+                                      <button
+                                        className="inline-flex items-center justify-center rounded-lg p-1.5 hover:bg-muted transition-colors"
+                                        title="View assessments"
+                                      >
+                                        {openSubjects.has(s.id) ? (
+                                          <EyeOff className="h-4 w-4 text-muted-foreground" />
+                                        ) : (
+                                          <Eye className="h-4 w-4 text-primary" />
+                                        )}
+                                      </button>
+                                    </CollapsibleTrigger>
+                                  ) : (
+                                    <span className="text-xs text-muted-foreground">—</span>
+                                  )}
+                                </TableCell>
+                              </TableRow>
+                              <CollapsibleContent asChild>
+                                <tr>
+                                  <td colSpan={6} className="p-0">
+                                    {bd.assessments.length > 0 && (
+                                      <div className="mx-4 my-3 rounded-xl border border-border/60 bg-card/80 backdrop-blur-sm overflow-hidden shadow-sm">
+                                        <div className="grid grid-cols-3 gap-0 text-xs font-semibold text-muted-foreground uppercase tracking-wider px-4 py-2.5 bg-muted/40 border-b border-border/40">
+                                          <span>Assessment</span>
+                                          <span className="text-center">Weight</span>
+                                          <span className="text-right">Score</span>
                                         </div>
-                                      ))}
-                                    </div>
-                                    {(() => {
-                                      const scored = bd.assessments.filter(a => a.score >= 0);
-                                      if (scored.length === 0) return null;
-                                      const total = scored.reduce((sum, a) => sum + Number(a.score), 0);
-                                      return (
-                                        <div className="grid grid-cols-3 gap-0 items-center px-4 py-3 bg-muted/30 border-t border-border/50">
-                                          <span className="text-sm font-bold text-foreground">Total</span>
-                                          <span />
-                                          <div className="text-right">
-                                            <span
-                                              className={`text-sm font-extrabold ${
-                                                total >= 50
-                                                  ? "text-emerald-600 dark:text-emerald-400"
-                                                  : "text-destructive"
-                                              }`}
+                                        <div className="divide-y divide-border/30">
+                                          {bd.assessments.map((a, i) => (
+                                            <div
+                                              key={i}
+                                              className="grid grid-cols-3 gap-0 items-center px-4 py-2.5 hover:bg-muted/20 transition-colors"
                                             >
-                                              {total.toFixed(1)}/100
-                                            </span>
-                                          </div>
+                                              <span className="text-sm font-medium text-foreground">
+                                                {a.assessment_name}
+                                              </span>
+                                              <span className="text-sm text-center text-muted-foreground">
+                                                {a.weight}%
+                                              </span>
+                                              <div className="text-right">
+                                                {a.score >= 0 ? (
+                                                  <Badge
+                                                    variant="outline"
+                                                    className={`text-xs font-bold ${
+                                                      a.score >= a.weight * 0.5
+                                                        ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-400"
+                                                        : "bg-destructive/10 text-destructive border-destructive/30"
+                                                    }`}
+                                                  >
+                                                    {a.score}/{a.weight}
+                                                  </Badge>
+                                                ) : (
+                                                  <Badge
+                                                    variant="outline"
+                                                    className="text-xs text-muted-foreground border-border/50"
+                                                  >
+                                                    Pending
+                                                  </Badge>
+                                                )}
+                                              </div>
+                                            </div>
+                                          ))}
                                         </div>
-                                      );
-                                    })()}
-                                  </div>
-                                )}
-                              </td>
-                            </tr>
-                          </CollapsibleContent>
-                        </>
-                      </Collapsible>
-                    );
-                  })
-                )}
+                                        {(() => {
+                                          const scored = bd.assessments.filter(a => a.score >= 0);
+                                          if (scored.length === 0) return null;
+                                          const total = scored.reduce((sum, a) => sum + Number(a.score), 0);
+                                          return (
+                                            <div className="grid grid-cols-3 gap-0 items-center px-4 py-3 bg-muted/30 border-t border-border/50">
+                                              <span className="text-sm font-bold text-foreground">Total</span>
+                                              <span />
+                                              <div className="text-right">
+                                                <span
+                                                  className={`text-sm font-extrabold ${
+                                                    total >= 50
+                                                      ? "text-emerald-600 dark:text-emerald-400"
+                                                      : "text-destructive"
+                                                  }`}
+                                                >
+                                                  {total.toFixed(1)}/100
+                                                </span>
+                                              </div>
+                                            </div>
+                                          );
+                                        })()}
+                                      </div>
+                                    )}
+                                  </td>
+                                </tr>
+                              </CollapsibleContent>
+                            </>
+                          </Collapsible>
+                        );
+                      })}
+                    </>
+                  );
+                })}
               </TableBody>
             </Table>
           )}

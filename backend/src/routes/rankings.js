@@ -42,22 +42,26 @@ router.get('/by-grade', authenticate, async (req, res) => {
       }
     }
     
-    // Build query to calculate rankings
+    // Build query to calculate rankings using assessment_scores
     let query = `
       SELECT 
         u.id as user_id,
         p.full_name,
         sp.grade_level,
         sp.stream,
-        AVG(g.score) as average_score,
-        COUNT(g.id) as total_subjects
+        sp.section,
+        sp.sub_section,
+        SUM(s.score) as total_score,
+        COUNT(DISTINCT at.subject_id) as total_subjects,
+        (SUM(s.score) / COUNT(DISTINCT at.subject_id)) as average_score
       FROM users u
       INNER JOIN profiles p ON u.id = p.user_id
       INNER JOIN student_profiles sp ON u.id = sp.user_id
-      INNER JOIN grades g ON u.id = g.student_id
+      INNER JOIN assessment_scores s ON u.id = s.student_id
+      INNER JOIN assessment_types at ON s.assessment_type_id = at.id
       WHERE sp.grade_level = ?
-      AND g.term = ?
-      AND g.academic_year = ?
+      AND s.term = ?
+      AND s.academic_year = ?
     `;
     
     const params = [grade_level, currentTerm, currentYear];
@@ -68,8 +72,8 @@ router.get('/by-grade', authenticate, async (req, res) => {
     }
     
     query += `
-      GROUP BY u.id, p.full_name, sp.grade_level, sp.stream
-      HAVING COUNT(g.id) > 0
+      GROUP BY u.id, p.full_name, sp.grade_level, sp.stream, sp.section, sp.sub_section
+      HAVING COUNT(DISTINCT at.subject_id) > 0
       ORDER BY average_score DESC
     `;
     
@@ -216,7 +220,7 @@ router.get('/top10', authenticate, authorize('director'), async (req, res) => {
     const currentTerm = term || settings.find(s => s.setting_key === 'current_term')?.setting_value || 'Term 1';
     const currentYear = academic_year || settings.find(s => s.setting_key === 'current_academic_year')?.setting_value || '2024-2025';
     
-    // Build query to calculate top 10 rankings across all grades
+    // Build query to calculate top 10 rankings across all grades using assessment_scores
     const query = `
       SELECT 
         u.id as user_id,
@@ -224,17 +228,19 @@ router.get('/top10', authenticate, authorize('director'), async (req, res) => {
         sp.grade_level,
         sp.stream,
         sp.section,
-        AVG(g.score) as average_score,
-        COUNT(g.id) as total_subjects
+        SUM(s.score) as total_score,
+        COUNT(DISTINCT at.subject_id) as total_subjects,
+        (SUM(s.score) / COUNT(DISTINCT at.subject_id)) as average_score
       FROM users u
       INNER JOIN profiles p ON u.id = p.user_id
       INNER JOIN student_profiles sp ON u.id = sp.user_id
-      INNER JOIN grades g ON u.id = g.student_id
+      INNER JOIN assessment_scores s ON u.id = s.student_id
+      INNER JOIN assessment_types at ON s.assessment_type_id = at.id
       WHERE sp.grade_level IN (9, 10, 11, 12)
-      AND g.term = ?
-      AND g.academic_year = ?
+      AND s.term = ?
+      AND s.academic_year = ?
       GROUP BY u.id, p.full_name, sp.grade_level, sp.stream, sp.section
-      HAVING COUNT(g.id) > 0
+      HAVING COUNT(DISTINCT at.subject_id) > 0
       ORDER BY average_score DESC
       LIMIT 10
     `;
