@@ -67,11 +67,14 @@ router.post('/types', authenticate, authorize('teacher', 'admin'), [
     const { subject_id, grade_level, stream, section, sub_section, assessment_name, weight } = req.body;
     const teacher_id = req.userId;
 
+    // Use empty string for common subjects (not NULL) to match UNIQUE constraint
+    const streamValue = stream || '';
+
     const [result] = await pool.query(
       `INSERT INTO assessment_types 
        (teacher_id, subject_id, grade_level, stream, section, sub_section, assessment_name, weight) 
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [teacher_id, subject_id, grade_level, stream || null, section || null, sub_section || null, assessment_name, weight]
+      [teacher_id, subject_id, grade_level, streamValue, section || null, sub_section || null, assessment_name, weight]
     );
 
     res.status(201).json({ 
@@ -80,6 +83,14 @@ router.post('/types', authenticate, authorize('teacher', 'admin'), [
     });
   } catch (error) {
     console.error('Create assessment type error:', error);
+    
+    // Handle duplicate assessment name error
+    if (error.code === 'ER_DUP_ENTRY') {
+      return res.status(400).json({ 
+        error: `Assessment "${req.body.assessment_name}" already exists for this subject and grade level. Each assessment name can only be created once.` 
+      });
+    }
+    
     res.status(500).json({ error: 'Failed to create assessment type' });
   }
 });
@@ -166,6 +177,8 @@ router.delete('/types/:id', authenticate, authorize('teacher', 'admin'), async (
 router.get('/scores', authenticate, async (req, res) => {
   try {
     const { student_id, assessment_type_id, term, academic_year } = req.query;
+    const userRole = req.userRole;
+    const userId = req.userId;
 
     let query = `
       SELECT 
@@ -179,6 +192,12 @@ router.get('/scores', authenticate, async (req, res) => {
       WHERE 1=1
     `;
     const params = [];
+
+    // If teacher, only show scores for their own assessment types
+    if (userRole === 'teacher') {
+      query += ' AND at.teacher_id = ?';
+      params.push(userId);
+    }
 
     if (student_id) {
       query += ' AND s.student_id = ?';
@@ -225,6 +244,24 @@ router.post('/scores', authenticate, authorize('teacher', 'admin'), [
     }
 
     const { student_id, assessment_type_id, score, term, academic_year, remarks, published } = req.body;
+    const userRole = req.userRole;
+    const userId = req.userId;
+
+    // If teacher, verify they own this assessment type
+    if (userRole === 'teacher') {
+      const [assessmentType] = await pool.query(
+        'SELECT teacher_id FROM assessment_types WHERE id = ?',
+        [assessment_type_id]
+      );
+      
+      if (assessmentType.length === 0) {
+        return res.status(404).json({ error: 'Assessment type not found' });
+      }
+      
+      if (assessmentType[0].teacher_id !== userId) {
+        return res.status(403).json({ error: 'You can only upload scores for your own assessments' });
+      }
+    }
 
     // Check if score already exists
     const [existing] = await pool.query(
@@ -273,6 +310,22 @@ router.post('/scores/bulk', authenticate, authorize('teacher', 'admin'), [
     }
 
     const { scores, term, academic_year } = req.body;
+    const userRole = req.userRole;
+    const userId = req.userId;
+
+    // If teacher, verify they own all assessment types in the bulk upload
+    if (userRole === 'teacher') {
+      const assessmentTypeIds = [...new Set(scores.map(s => s.assessment_type_id))];
+      const [assessmentTypes] = await connection.query(
+        `SELECT id, teacher_id FROM assessment_types WHERE id IN (?)`,
+        [assessmentTypeIds]
+      );
+      
+      const unauthorized = assessmentTypes.find(at => at.teacher_id !== userId);
+      if (unauthorized) {
+        return res.status(403).json({ error: 'You can only upload scores for your own assessments' });
+      }
+    }
 
     await connection.beginTransaction();
 
@@ -323,6 +376,26 @@ router.post('/scores/bulk', authenticate, authorize('teacher', 'admin'), [
 router.delete('/scores/:id', authenticate, authorize('teacher', 'admin'), async (req, res) => {
   try {
     const { id } = req.params;
+    const userRole = req.userRole;
+    const userId = req.userId;
+
+    // If teacher, verify they own the assessment type for this score
+    if (userRole === 'teacher') {
+      const [score] = await pool.query(`
+        SELECT s.id, at.teacher_id 
+        FROM assessment_scores s
+        JOIN assessment_types at ON s.assessment_type_id = at.id
+        WHERE s.id = ?
+      `, [id]);
+      
+      if (score.length === 0) {
+        return res.status(404).json({ error: 'Score not found' });
+      }
+      
+      if (score[0].teacher_id !== userId) {
+        return res.status(403).json({ error: 'You can only delete your own assessment scores' });
+      }
+    }
 
     await pool.query('DELETE FROM assessment_scores WHERE id = ?', [id]);
 

@@ -526,11 +526,20 @@ export default function TeacherPortal() {
                               {assessmentTypes.map(a => (
                                 <TableCell key={a.id}>
                                   <Input
-                                    type="number" min={0} max={100}
+                                    type="number" 
+                                    min={0} 
+                                    max={a.weight}
                                     value={scores[s.user_id]?.[a.id] ?? ""}
-                                    onChange={e => handleScoreChange(s.user_id, a.id, e.target.value)}
+                                    onChange={e => {
+                                      const value = e.target.value;
+                                      const numValue = parseFloat(value);
+                                      // Prevent entering values greater than max
+                                      if (value === '' || (numValue >= 0 && numValue <= a.weight)) {
+                                        handleScoreChange(s.user_id, a.id, value);
+                                      }
+                                    }}
                                     className="h-8 w-24 rounded-lg text-sm"
-                                    placeholder="—"
+                                    placeholder={`0-${a.weight}`}
                                   />
                                 </TableCell>
                               ))}

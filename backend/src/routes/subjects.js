@@ -31,7 +31,7 @@ router.get('/', authenticate, async (req, res) => {
     }
     
     if (stream) {
-      query += ' AND (s.stream = ? OR s.stream = "Common")';
+      query += ' AND (s.stream = ? OR s.stream IS NULL)';
       params.push(stream);
     }
     
@@ -119,7 +119,7 @@ router.post('/assign-teacher', authenticate, authorize('admin', 'director'), [
   body('teacher_id').isInt(),
   body('subject_id').isInt(),
   body('grade_level').isInt({ min: 1, max: 12 }),
-  body('stream').optional().isIn(['Science', 'Arts', 'Commerce'])
+  body('stream').optional().isIn(['natural', 'social'])
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -129,9 +129,12 @@ router.post('/assign-teacher', authenticate, authorize('admin', 'director'), [
 
     const { teacher_id, subject_id, grade_level, stream } = req.body;
 
+    // Use empty string for common subjects (not NULL) to ensure UNIQUE constraint works
+    const streamValue = stream || '';
+
     const [result] = await pool.query(
       'INSERT INTO teacher_subjects (teacher_id, subject_id, grade_level, stream) VALUES (?, ?, ?, ?)',
-      [teacher_id, subject_id, grade_level, stream || null]
+      [teacher_id, subject_id, grade_level, streamValue]
     );
 
     res.status(201).json({

@@ -1073,7 +1073,7 @@ export default function Admin() {
                         setSubjectForm({
                           ...subjectForm, 
                           grade_level: grade,
-                          stream: grade <= 10 ? "" : "Science"
+                          stream: grade <= 10 ? "" : "natural"
                         });
                       }}
                     >
@@ -1100,8 +1100,8 @@ export default function Admin() {
                           <SelectValue placeholder="Select stream..." />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="Science">Natural Science</SelectItem>
-                          <SelectItem value="Arts">Social Science</SelectItem>
+                          <SelectItem value="natural">Natural Science</SelectItem>
+                          <SelectItem value="social">Social Science</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -1179,7 +1179,7 @@ export default function Admin() {
                               const updated = [...bulkSubjects];
                               const grade = parseInt(v);
                               updated[index].grade_level = grade;
-                              updated[index].stream = grade <= 10 ? "" : "Science";
+                              updated[index].stream = grade <= 10 ? "" : "natural";
                               setBulkSubjects(updated);
                             }}
                           >
@@ -1209,8 +1209,8 @@ export default function Admin() {
                                 <SelectValue placeholder="Select stream..." />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="Science">Natural Science</SelectItem>
-                                <SelectItem value="Arts">Social Science</SelectItem>
+                                <SelectItem value="natural">Natural Science</SelectItem>
+                                <SelectItem value="social">Social Science</SelectItem>
                               </SelectContent>
                             </Select>
                           </div>

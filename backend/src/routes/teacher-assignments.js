@@ -102,7 +102,8 @@ router.post('/:teacherId', authenticate, authorize('admin', 'registrar', 'direct
             [subjectId, gradeLevel]
           );
           
-          const stream = subjectInfo[0]?.stream || null;
+          // Use empty string for common subjects (not NULL) to match UNIQUE constraint
+          const stream = subjectInfo[0]?.stream || '';
           const key = `${subjectId}-${gradeLevel}-${stream}`;
           if (!seen.has(key)) {
             seen.add(key);
@@ -142,6 +143,46 @@ router.post('/:teacherId', authenticate, authorize('admin', 'registrar', 'direct
   } catch (error) {
     await connection.rollback();
     console.error('Save teacher assignments error:', error);
+    
+    // Handle duplicate entry error with user-friendly message
+    if (error.code === 'ER_DUP_ENTRY') {
+      // Extract subject info from error message
+      const match = error.sqlMessage.match(/Duplicate entry '(\d+)-(\d+)-(.*)'/);
+      if (match) {
+        const [, subjectId, gradeLevel, stream] = match;
+        
+        // Get subject name and current teacher
+        try {
+          const [subjectInfo] = await pool.query(
+            'SELECT s.subject_name FROM subjects s WHERE s.id = ?',
+            [subjectId]
+          );
+          
+          const [currentTeacher] = await pool.query(
+            `SELECT p.full_name 
+             FROM teacher_subjects ts 
+             JOIN profiles p ON ts.teacher_id = p.user_id 
+             WHERE ts.subject_id = ? AND ts.grade_level = ? AND ts.stream = ?`,
+            [subjectId, gradeLevel, stream || '']
+          );
+          
+          const subjectName = subjectInfo[0]?.subject_name || 'Unknown Subject';
+          const teacherName = currentTeacher[0]?.full_name || 'another teacher';
+          const streamText = stream ? ` (${stream} stream)` : '';
+          
+          return res.status(400).json({ 
+            error: `${subjectName} Grade ${gradeLevel}${streamText} is already assigned to ${teacherName}. Only one teacher can teach each subject per grade level.` 
+          });
+        } catch (lookupError) {
+          console.error('Error looking up subject info:', lookupError);
+        }
+      }
+      
+      return res.status(400).json({ 
+        error: 'One or more subjects are already assigned to another teacher. Only one teacher can teach each subject per grade level.' 
+      });
+    }
+    
     res.status(500).json({ error: 'Failed to save teacher assignments' });
   } finally {
     connection.release();
