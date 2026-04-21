@@ -188,6 +188,7 @@ export default function RegistrarPortal() {
           is_active: u.is_active,
           profile_image: u.profile_image,
           gender: u.gender,
+          parent_count: u.parent_count || 0,
         }));
       setStudents(studentProfiles);
     } catch (error: any) {

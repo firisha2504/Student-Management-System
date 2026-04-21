@@ -199,7 +199,7 @@ export default function TeacherPortal() {
     fetch();
   }, [activeSection, assignments.grades]);
 
-  const totalWeight = assessmentTypes.reduce((s, a) => s + a.weight, 0);
+  const totalWeight = assessmentTypes.reduce((s, a) => s + Number(a.weight), 0);
 
   const addAssessment = async (name: string, weight: number) => {
     if (!selectedSubjectId || !selectedGrade) return;

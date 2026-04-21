@@ -14,11 +14,13 @@ router.get('/', authenticate, authorize('admin', 'registrar', 'director', 'teach
       SELECT 
         u.id as user_id, u.username, u.email,
         p.full_name, p.phone, p.address, p.date_of_birth, p.gender,
-        sp.admission_number, sp.grade_level, sp.stream, sp.section, sp.sub_section, sp.enrollment_date
+        sp.admission_number, sp.grade_level, sp.stream, sp.section, sp.sub_section, sp.enrollment_date,
+        COUNT(DISTINCT ps.parent_id) as parent_count
       FROM users u
       INNER JOIN user_roles ur ON u.id = ur.user_id
       INNER JOIN profiles p ON u.id = p.user_id
       LEFT JOIN student_profiles sp ON u.id = sp.user_id
+      LEFT JOIN parent_students ps ON u.id = ps.student_id
       WHERE ur.role = 'student' AND p.is_active = TRUE
     `;
     
@@ -44,6 +46,7 @@ router.get('/', authenticate, authorize('admin', 'registrar', 'director', 'teach
       params.push(sub_section);
     }
     
+    query += ' GROUP BY u.id, u.username, u.email, p.full_name, p.phone, p.address, p.date_of_birth, p.gender, sp.admission_number, sp.grade_level, sp.stream, sp.section, sp.sub_section, sp.enrollment_date';
     query += ' ORDER BY sp.grade_level, sp.section, sp.sub_section, p.full_name';
     
     const [students] = await pool.query(query, params);
