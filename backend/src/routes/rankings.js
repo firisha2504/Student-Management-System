@@ -8,8 +8,8 @@ const router = express.Router();
 router.get('/by-grade', authenticate, async (req, res) => {
   try {
     const { grade_level, stream, term, academic_year } = req.query;
-    const userRole = req.user.role;
-    const userId = req.user.userId;
+    const userRole = req.userRole;
+    const userId = req.userId;
     
     if (!grade_level) {
       return res.status(400).json({ error: 'grade_level is required' });

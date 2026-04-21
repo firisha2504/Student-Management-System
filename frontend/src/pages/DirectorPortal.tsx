@@ -8,10 +8,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import {
   Users, GraduationCap, BarChart3, Trophy, Eye,
-  Menu, ChevronLeft, ChevronRight, PieChart as PieChartIcon, Medal, Printer
+  Menu, ChevronLeft, ChevronRight, PieChart as PieChartIcon, Medal, Printer, BookOpen
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import SuccessModal from "@/components/SuccessModal";
@@ -49,13 +50,14 @@ interface OverallRankingEntry {
   rank: number;
 }
 
-type DirectorSection = "teachers" | "rankings" | "top10" | "performance";
+type DirectorSection = "teachers" | "rankings" | "top10" | "performance" | "homeroom";
 
 const sidebarItems: { id: DirectorSection; label: string; icon: React.ElementType }[] = [
   { id: "teachers", label: "Teachers", icon: Users },
   { id: "rankings", label: "Rankings", icon: Trophy },
   { id: "top10", label: "Top 10 Overall", icon: Medal },
   { id: "performance", label: "Performance", icon: BarChart3 },
+  { id: "homeroom", label: "Homeroom", icon: BookOpen },
 ];
 
 const CHART_COLORS = [
@@ -111,6 +113,17 @@ export default function DirectorPortal() {
   // Performance filters
   const [perfGrade, setPerfGrade] = useState("all");
   const [perfStream, setPerfStream] = useState("all");
+
+  // Homeroom
+  const [homeroomAssignments, setHomeroomAssignments] = useState<any[]>([]);
+  const [loadingHomeroom, setLoadingHomeroom] = useState(false);
+  const [homeroomDialogOpen, setHomeroomDialogOpen] = useState(false);
+  const [selectedHomeroomTeacher, setSelectedHomeroomTeacher] = useState<number | null>(null);
+  const [homeroomGrade, setHomeroomGrade] = useState<number>(9);
+  const [homeroomSection, setHomeroomSection] = useState<string>("");
+  const [homeroomSubSection, setHomeroomSubSection] = useState<string>("");
+  const [homeroomStream, setHomeroomStream] = useState<string>("");
+  const [savingHomeroom, setSavingHomeroom] = useState(false);
 
   const [successModal, setSuccessModal] = useState<{ title: string; description?: string } | null>(null);
 
@@ -226,6 +239,63 @@ export default function DirectorPortal() {
       toast({ title: "Error", description: err.message || "Failed to fetch top 10 rankings", variant: "destructive" });
     }
     setLoadingTop10(false);
+  };
+
+  const fetchHomeroomAssignments = async () => {
+    setLoadingHomeroom(true);
+    try {
+      const currentYear = new Date().getFullYear();
+      const data = await api.getHomeroomAssignments({ academic_year: `${currentYear}-${currentYear + 1}` });
+      setHomeroomAssignments(data || []);
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to fetch homeroom assignments", variant: "destructive" });
+    }
+    setLoadingHomeroom(false);
+  };
+
+  const openHomeroomDialog = (teacherId: number) => {
+    setSelectedHomeroomTeacher(teacherId);
+    setHomeroomGrade(9);
+    setHomeroomSection("");
+    setHomeroomSubSection("");
+    setHomeroomStream("");
+    setHomeroomDialogOpen(true);
+  };
+
+  const assignHomeroom = async () => {
+    if (!selectedHomeroomTeacher) return;
+    setSavingHomeroom(true);
+    try {
+      const currentYear = new Date().getFullYear();
+      await api.assignHomeroomTeacher({
+        teacher_id: selectedHomeroomTeacher,
+        grade_level: homeroomGrade,
+        section: homeroomSection || undefined,
+        sub_section: homeroomSubSection || undefined,
+        stream: homeroomStream || undefined,
+        academic_year: `${currentYear}-${currentYear + 1}`,
+      });
+      setSuccessModal({ 
+        title: "Homeroom Assigned", 
+        description: "Teacher has been assigned as homeroom teacher" 
+      });
+      setHomeroomDialogOpen(false);
+      await fetchHomeroomAssignments();
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to assign homeroom", variant: "destructive" });
+    }
+    setSavingHomeroom(false);
+  };
+
+  const removeHomeroom = async (assignmentId: number) => {
+    if (!confirm("Are you sure you want to remove this homeroom assignment?")) return;
+    try {
+      await api.removeHomeroomAssignment(assignmentId);
+      setSuccessModal({ title: "Homeroom Removed", description: "Homeroom assignment has been removed" });
+      await fetchHomeroomAssignments();
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to remove homeroom", variant: "destructive" });
+    }
   };
 
   const printTop10 = () => {
@@ -826,6 +896,123 @@ export default function DirectorPortal() {
             )}
           </div>
         );
+      
+      case "homeroom":
+        return (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <h2 className="text-xl font-bold text-foreground">Homeroom Management</h2>
+                <p className="text-sm text-muted-foreground">Assign homeroom teachers to classes</p>
+              </div>
+              <Button onClick={fetchHomeroomAssignments} disabled={loadingHomeroom} className="rounded-xl gradient-primary border-0 text-white">
+                {loadingHomeroom ? "Loading..." : "Refresh"}
+              </Button>
+            </div>
+
+            {loadingHomeroom ? (
+              <Card className="border-0 shadow-sm">
+                <CardContent className="py-10 text-center text-muted-foreground">Loading homeroom assignments...</CardContent>
+              </Card>
+            ) : (
+              <Card className="border-0 shadow-md overflow-hidden">
+                <CardContent className="p-0">
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-muted/20">
+                          <TableHead>Teacher</TableHead>
+                          <TableHead>Grade</TableHead>
+                          <TableHead>Section</TableHead>
+                          <TableHead>Sub-Section</TableHead>
+                          <TableHead>Stream</TableHead>
+                          <TableHead className="text-center">Students</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {homeroomAssignments.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={7} className="text-center text-muted-foreground py-10">
+                              <BookOpen className="h-12 w-12 mx-auto mb-3 text-muted-foreground/50" />
+                              <p>No homeroom assignments yet</p>
+                              <p className="text-xs mt-1">Assign teachers from the Teachers tab</p>
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          homeroomAssignments.map((assignment) => (
+                            <TableRow key={assignment.id} className="hover:bg-muted/30">
+                              <TableCell>
+                                <div>
+                                  <p className="font-semibold">{assignment.teacher_name}</p>
+                                  <p className="text-xs text-muted-foreground font-mono">{assignment.teacher_username}</p>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant="outline" className="text-xs">Grade {assignment.grade_level}</Badge>
+                              </TableCell>
+                              <TableCell className="capitalize">{assignment.section || "—"}</TableCell>
+                              <TableCell>{assignment.sub_section || "—"}</TableCell>
+                              <TableCell className="capitalize">{assignment.stream || "—"}</TableCell>
+                              <TableCell className="text-center">
+                                <Badge className="gradient-accent border-0 text-white text-xs">
+                                  {assignment.student_count} students
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  className="rounded-lg text-xs"
+                                  onClick={() => removeHomeroom(assignment.id)}
+                                >
+                                  Remove
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Teachers List with Assign Button */}
+            <Card className="border-0 shadow-md">
+              <CardHeader>
+                <CardTitle className="text-lg">Assign Homeroom Teachers</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {teachers.map((teacher) => {
+                    const hasHomeroom = homeroomAssignments.some(a => a.teacher_id === parseInt(teacher.user_id));
+                    return (
+                      <div key={teacher.user_id} className="flex items-center justify-between p-3 rounded-xl border border-border/50 hover:bg-muted/30 transition-colors">
+                        <div>
+                          <p className="font-semibold">{teacher.full_name}</p>
+                          <p className="text-xs text-muted-foreground font-mono">{teacher.id_number}</p>
+                        </div>
+                        <Button
+                          size="sm"
+                          onClick={() => openHomeroomDialog(parseInt(teacher.user_id))}
+                          className={cn(
+                            "rounded-lg text-xs",
+                            hasHomeroom ? "gradient-accent border-0 text-white" : "gradient-primary border-0 text-white"
+                          )}
+                        >
+                          {hasHomeroom ? "Reassign" : "Assign Homeroom"}
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        );
+      
       default:
         return null;
     }
@@ -969,6 +1156,86 @@ export default function DirectorPortal() {
             <DialogClose asChild><Button variant="outline" className="flex-1 rounded-xl">Cancel</Button></DialogClose>
             <Button onClick={saveAssignments} disabled={savingAssignments} className="flex-1 rounded-xl gradient-primary border-0 text-white">
               {savingAssignments ? "Saving..." : "Save"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Homeroom Assignment Dialog */}
+      <Dialog open={homeroomDialogOpen} onOpenChange={setHomeroomDialogOpen}>
+        <DialogContent aria-describedby={undefined} className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Assign Homeroom Teacher</DialogTitle>
+            <p className="text-xs text-muted-foreground">Select the class for this homeroom teacher</p>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Grade Level</Label>
+              <Select value={String(homeroomGrade)} onValueChange={(v) => setHomeroomGrade(parseInt(v))}>
+                <SelectTrigger className="rounded-xl">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[9, 10, 11, 12].map((g) => (
+                    <SelectItem key={g} value={String(g)}>Grade {g}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Section (Optional)</Label>
+              <Select value={homeroomSection} onValueChange={setHomeroomSection}>
+                <SelectTrigger className="rounded-xl">
+                  <SelectValue placeholder="Select section" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">All Sections</SelectItem>
+                  <SelectItem value="oromo">Oromo</SelectItem>
+                  <SelectItem value="amharic">Amharic</SelectItem>
+                  <SelectItem value="somali">Somali</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Sub-Section (Optional)</Label>
+              <Select value={homeroomSubSection} onValueChange={setHomeroomSubSection}>
+                <SelectTrigger className="rounded-xl">
+                  <SelectValue placeholder="Select sub-section" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">All Sub-Sections</SelectItem>
+                  {["A", "B", "C", "D", "E", "F", "G", "H"].map((s) => (
+                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {(homeroomGrade === 11 || homeroomGrade === 12) && (
+              <div className="space-y-2">
+                <Label>Stream (Optional)</Label>
+                <Select value={homeroomStream} onValueChange={setHomeroomStream}>
+                  <SelectTrigger className="rounded-xl">
+                    <SelectValue placeholder="Select stream" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">All Streams</SelectItem>
+                    <SelectItem value="natural">Natural</SelectItem>
+                    <SelectItem value="social">Social</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+          <div className="flex gap-3 mt-4">
+            <DialogClose asChild>
+              <Button variant="outline" className="flex-1 rounded-xl">Cancel</Button>
+            </DialogClose>
+            <Button
+              onClick={assignHomeroom}
+              disabled={savingHomeroom}
+              className="flex-1 rounded-xl gradient-primary border-0 text-white"
+            >
+              {savingHomeroom ? "Assigning..." : "Assign"}
             </Button>
           </div>
         </DialogContent>

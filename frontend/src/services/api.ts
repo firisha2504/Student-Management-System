@@ -555,3 +555,42 @@ export const api = {
     });
   },
 };
+
+  // Homeroom
+  async getMyHomeroom() {
+    return apiRequest('/homeroom/my-homeroom');
+  },
+
+  async getMyHomeroomStudents() {
+    return apiRequest('/homeroom/my-students');
+  },
+
+  async getMyClassRankings(filters?: { term?: string; academic_year?: string }) {
+    const params = new URLSearchParams();
+    if (filters?.term) params.append('term', filters.term);
+    if (filters?.academic_year) params.append('academic_year', filters.academic_year);
+    
+    const queryString = params.toString();
+    return apiRequest(`/homeroom/my-class-rankings${queryString ? '?' + queryString : ''}`);
+  },
+
+  async assignHomeroomTeacher(data: { teacher_id: number; grade_level: number; section?: string; sub_section?: string; stream?: string; academic_year: string }) {
+    return apiRequest('/homeroom/assign', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async getHomeroomAssignments(filters?: { academic_year?: string }) {
+    const params = new URLSearchParams();
+    if (filters?.academic_year) params.append('academic_year', filters.academic_year);
+    
+    const queryString = params.toString();
+    return apiRequest(`/homeroom/assignments${queryString ? '?' + queryString : ''}`);
+  },
+
+  async removeHomeroomAssignment(id: number) {
+    return apiRequest(`/homeroom/assign/${id}`, {
+      method: 'DELETE',
+    });
+  },

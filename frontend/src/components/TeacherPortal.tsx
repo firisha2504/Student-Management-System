@@ -12,7 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Upload, CheckCircle2, Plus, Trash2, AlertCircle,
   ChevronDown, ChevronUp, Zap, Pencil, Save, X, Eye,
-  Users, BookOpen, ChevronLeft, ChevronRight, Menu
+  Users, BookOpen, ChevronLeft, ChevronRight, Menu, Trophy
 } from "lucide-react";
 import SuccessModal from "@/components/SuccessModal";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -25,7 +25,7 @@ interface AssessmentType { id: number; assessment_name: string; weight: number; 
 interface SavedScore { id: number; student_id: number; full_name: string; username: string; score: number; }
 
 const FIXED_ASSESSMENTS = ["Mid Exam", "Final Exam"];
-type NavSection = "grades" | "students";
+type NavSection = "grades" | "students" | "homeroom";
 type ScoreTab = "scores" | "view";
 
 export default function TeacherPortal() {
@@ -72,6 +72,12 @@ export default function TeacherPortal() {
   const [expandedGrades, setExpandedGrades] = useState<Set<number>>(new Set());
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const [expandedSubjects, setExpandedSubjects] = useState<Set<string>>(new Set());
+
+  // Homeroom
+  const [homeroomStudents, setHomeroomStudents] = useState<StudentProfile[]>([]);
+  const [homeroomRankings, setHomeroomRankings] = useState<any[]>([]);
+  const [loadingHomeroom, setLoadingHomeroom] = useState(false);
+  const [homeroomAssignment, setHomeroomAssignment] = useState<any>(null);
 
   const [successModal, setSuccessModal] = useState<{ title: string; description?: string } | null>(null);
   const [term, setTerm] = useState("Semester 1");
@@ -199,6 +205,28 @@ export default function TeacherPortal() {
     fetch();
   }, [activeSection, assignments.grades]);
 
+  // Load homeroom data
+  useEffect(() => {
+    if (activeSection !== "homeroom") return;
+    const fetchHomeroom = async () => {
+      setLoadingHomeroom(true);
+      try {
+        const [assignment, students, rankings] = await Promise.all([
+          api.getMyHomeroom(),
+          api.getMyHomeroomStudents(),
+          api.getMyClassRankings({ term, academic_year: academicYear }),
+        ]);
+        setHomeroomAssignment(assignment.length > 0 ? assignment[0] : null);
+        setHomeroomStudents(students || []);
+        setHomeroomRankings(rankings.rankings || []);
+      } catch (error: any) {
+        toast({ title: "Error", description: error.message || "Failed to load homeroom data", variant: "destructive" });
+      }
+      setLoadingHomeroom(false);
+    };
+    fetchHomeroom();
+  }, [activeSection, term, academicYear]);
+
   const totalWeight = assessmentTypes.reduce((s, a) => s + Number(a.weight), 0);
 
   const addAssessment = async (name: string, weight: number) => {
@@ -317,6 +345,7 @@ export default function TeacherPortal() {
   const navItems: { id: NavSection; label: string; icon: React.ElementType }[] = [
     { id: "grades", label: "Upload Grades", icon: Upload },
     { id: "students", label: "My Students", icon: Users },
+    { id: "homeroom", label: "My Homeroom", icon: BookOpen },
   ];
 
   const handleNavClick = (id: NavSection) => { setActiveSection(id); setMobileSidebarOpen(false); };
@@ -747,6 +776,115 @@ export default function TeacherPortal() {
     </div>
   );
 
+  const renderHomeroomSection = () => (
+    <div className="space-y-5">
+      <div>
+        <h2 className="text-xl font-bold text-foreground">My Homeroom Class</h2>
+        <p className="text-sm text-muted-foreground">View your homeroom students and their rankings</p>
+      </div>
+
+      {loadingHomeroom ? (
+        <Card className="border-0 shadow-sm">
+          <CardContent className="py-10 text-center text-muted-foreground">Loading homeroom data...</CardContent>
+        </Card>
+      ) : !homeroomAssignment ? (
+        <Card className="border-0 shadow-sm">
+          <CardContent className="py-10 text-center">
+            <BookOpen className="h-12 w-12 mx-auto mb-3 text-muted-foreground/50" />
+            <p className="text-muted-foreground">You are not assigned as a homeroom teacher</p>
+            <p className="text-xs text-muted-foreground mt-1">Contact the administrator if you believe this is an error</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          {/* Homeroom Info Card */}
+          <Card className="border-0 shadow-md">
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="gradient-primary rounded-xl p-3">
+                  <BookOpen className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-foreground">Grade {homeroomAssignment.grade_level}</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {homeroomAssignment.section && `Section: ${homeroomAssignment.section}`}
+                    {homeroomAssignment.sub_section && ` - ${homeroomAssignment.sub_section}`}
+                    {homeroomAssignment.stream && ` (${homeroomAssignment.stream})`}
+                  </p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-muted/30 rounded-xl p-3">
+                  <p className="text-xs text-muted-foreground">Total Students</p>
+                  <p className="text-2xl font-bold text-foreground">{homeroomStudents.length}</p>
+                </div>
+                <div className="bg-muted/30 rounded-xl p-3">
+                  <p className="text-xs text-muted-foreground">Academic Year</p>
+                  <p className="text-sm font-semibold text-foreground">{academicYear}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Class Rankings */}
+          <Card className="border-0 shadow-md">
+            <CardContent className="pt-6">
+              <h3 className="font-bold text-foreground mb-4 flex items-center gap-2">
+                <Trophy className="h-5 w-5 text-primary" />
+                Class Rankings
+              </h3>
+              {homeroomRankings.length === 0 ? (
+                <p className="text-center text-muted-foreground py-6">No rankings available yet</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/20">
+                        <TableHead className="w-16">Rank</TableHead>
+                        <TableHead>Student Name</TableHead>
+                        <TableHead>ID Number</TableHead>
+                        <TableHead className="text-center">Subjects</TableHead>
+                        <TableHead className="text-right">Average</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {homeroomRankings.map((student) => (
+                        <TableRow key={student.user_id} className="hover:bg-muted/30">
+                          <TableCell className="font-bold text-primary">
+                            {student.rank ? `#${student.rank}` : "—"}
+                          </TableCell>
+                          <TableCell className="font-semibold">{student.full_name}</TableCell>
+                          <TableCell className="font-mono text-sm">{student.admission_number}</TableCell>
+                          <TableCell className="text-center">{student.total_subjects || 0}</TableCell>
+                          <TableCell className="text-right">
+                            {student.average_score > 0 ? (
+                              <Badge
+                                className={cn(
+                                  "text-xs font-bold",
+                                  student.average_score >= 50
+                                    ? "gradient-accent border-0 text-white"
+                                    : "bg-destructive text-destructive-foreground"
+                                )}
+                              >
+                                {student.average_score}%
+                              </Badge>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">No scores</span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </>
+      )}
+    </div>
+  );
+
   return (
     <div className="flex h-full min-h-screen bg-background">
       {/* Mobile overlay */}
@@ -812,11 +950,13 @@ export default function TeacherPortal() {
           <button onClick={() => setMobileSidebarOpen(true)} className="p-2 rounded-lg hover:bg-muted/50 transition-colors">
             <Menu className="h-5 w-5" />
           </button>
-          <span className="font-semibold text-sm capitalize">{activeSection === "grades" ? "Upload Grades" : "My Students"}</span>
+          <span className="font-semibold text-sm capitalize">
+            {activeSection === "grades" ? "Upload Grades" : activeSection === "students" ? "My Students" : "My Homeroom"}
+          </span>
         </div>
 
         <main className="flex-1 p-4 sm:p-6 overflow-y-auto">
-          {activeSection === "grades" ? renderGradesSection() : renderStudentsSection()}
+          {activeSection === "grades" ? renderGradesSection() : activeSection === "students" ? renderStudentsSection() : renderHomeroomSection()}
         </main>
       </div>
 
