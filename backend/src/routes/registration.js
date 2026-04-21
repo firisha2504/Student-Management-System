@@ -286,4 +286,112 @@ router.patch('/:id/approve', authenticate, authorize('registrar', 'admin'), [
   }
 });
 
+// Get registration period settings (registrar/admin)
+router.get('/period-settings', authenticate, authorize('registrar', 'admin', 'director'), async (req, res) => {
+  try {
+    const [settings] = await pool.query(
+      `SELECT setting_key, setting_value FROM system_settings 
+       WHERE setting_key IN ('registration_open', 'registration_start_date', 'registration_end_date', 'registration_academic_year')
+       ORDER BY setting_key`
+    );
+    
+    const settingsObj = {};
+    settings.forEach(setting => {
+      settingsObj[setting.setting_key] = setting.setting_value;
+    });
+    
+    res.json(settingsObj);
+  } catch (error) {
+    console.error('Get registration period settings error:', error);
+    res.status(500).json({ error: 'Failed to fetch registration period settings' });
+  }
+});
+
+// Update registration period settings (registrar/admin)
+router.post('/period-settings', authenticate, authorize('registrar', 'admin'), [
+  body('registration_open').isBoolean(),
+  body('registration_start_date').optional().isISO8601(),
+  body('registration_end_date').optional().isISO8601(),
+  body('registration_academic_year').optional().isString()
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { registration_open, registration_start_date, registration_end_date, registration_academic_year } = req.body;
+    
+    // Update settings
+    const updates = [
+      ['registration_open', registration_open.toString()]
+    ];
+    
+    if (registration_start_date) {
+      updates.push(['registration_start_date', registration_start_date]);
+    }
+    
+    if (registration_end_date) {
+      updates.push(['registration_end_date', registration_end_date]);
+    }
+    
+    if (registration_academic_year) {
+      updates.push(['registration_academic_year', registration_academic_year]);
+    }
+    
+    for (const [key, value] of updates) {
+      await pool.query(
+        'UPDATE system_settings SET setting_value = ?, updated_at = NOW() WHERE setting_key = ?',
+        [value, key]
+      );
+    }
+    
+    res.json({ message: 'Registration period settings updated successfully' });
+  } catch (error) {
+    console.error('Update registration period settings error:', error);
+    res.status(500).json({ error: 'Failed to update registration period settings' });
+  }
+});
+
+// Check if registration is currently open
+router.get('/is-open', authenticate, async (req, res) => {
+  try {
+    const [settings] = await pool.query(
+      `SELECT setting_key, setting_value FROM system_settings 
+       WHERE setting_key IN ('registration_open', 'registration_start_date', 'registration_end_date')
+       ORDER BY setting_key`
+    );
+    
+    const settingsObj = {};
+    settings.forEach(setting => {
+      settingsObj[setting.setting_key] = setting.setting_value;
+    });
+    
+    const isOpen = settingsObj.registration_open === 'true';
+    const now = new Date();
+    const startDate = settingsObj.registration_start_date ? new Date(settingsObj.registration_start_date) : null;
+    const endDate = settingsObj.registration_end_date ? new Date(settingsObj.registration_end_date) : null;
+    
+    let isInPeriod = true;
+    if (startDate && now < startDate) {
+      isInPeriod = false;
+    }
+    if (endDate && now > endDate) {
+      isInPeriod = false;
+    }
+    
+    res.json({
+      isOpen: isOpen && isInPeriod,
+      manuallyOpen: isOpen,
+      isInPeriod,
+      startDate: settingsObj.registration_start_date,
+      endDate: settingsObj.registration_end_date,
+      currentDate: now.toISOString().split('T')[0]
+    });
+  } catch (error) {
+    console.error('Check registration open error:', error);
+    res.status(500).json({ error: 'Failed to check registration status' });
+  }
+});
+
 export default router;

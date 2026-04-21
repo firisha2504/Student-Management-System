@@ -132,15 +132,60 @@ router.post('/assign', authenticate, authorize('admin', 'director'), async (req,
       return res.status(404).json({ error: 'Teacher not found' });
     }
     
-    // Insert or update homeroom assignment
+    // Check if teacher is already assigned as homeroom teacher for this academic year
+    const [existingTeacherAssignment] = await pool.query(
+      `SELECT id FROM homeroom_assignments 
+       WHERE teacher_id = ? AND academic_year = ?`,
+      [teacher_id, academic_year]
+    );
+    
+    if (existingTeacherAssignment.length > 0) {
+      return res.status(400).json({ 
+        error: 'This teacher is already assigned as homeroom teacher for another class this academic year. One teacher can only be homeroom teacher for one class.' 
+      });
+    }
+    
+    // Check if this specific class already has a homeroom teacher
+    let checkQuery = `
+      SELECT id, teacher_id FROM homeroom_assignments 
+      WHERE grade_level = ? AND academic_year = ?
+    `;
+    const checkParams = [grade_level, academic_year];
+    
+    if (section) {
+      checkQuery += ' AND section = ?';
+      checkParams.push(section);
+    } else {
+      checkQuery += ' AND section IS NULL';
+    }
+    
+    if (sub_section) {
+      checkQuery += ' AND sub_section = ?';
+      checkParams.push(sub_section);
+    } else {
+      checkQuery += ' AND sub_section IS NULL';
+    }
+    
+    if (stream) {
+      checkQuery += ' AND stream = ?';
+      checkParams.push(stream);
+    } else {
+      checkQuery += ' AND stream IS NULL';
+    }
+    
+    const [existingClassAssignment] = await pool.query(checkQuery, checkParams);
+    
+    if (existingClassAssignment.length > 0) {
+      return res.status(400).json({ 
+        error: 'This class already has a homeroom teacher assigned. One class can only have one homeroom teacher.' 
+      });
+    }
+    
+    // Insert homeroom assignment
     await pool.query(
       `INSERT INTO homeroom_assignments 
        (teacher_id, grade_level, section, sub_section, stream, academic_year)
-       VALUES (?, ?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE
-       section = VALUES(section),
-       sub_section = VALUES(sub_section),
-       stream = VALUES(stream)`,
+       VALUES (?, ?, ?, ?, ?, ?)`,
       [teacher_id, grade_level, section || null, sub_section || null, stream || null, academic_year]
     );
     
@@ -165,9 +210,12 @@ router.post('/assign', authenticate, authorize('admin', 'director'), async (req,
       params.push(stream);
     }
     
-    await pool.query(updateQuery, params);
+    const [updateResult] = await pool.query(updateQuery, params);
     
-    res.json({ message: 'Homeroom teacher assigned successfully' });
+    res.json({ 
+      message: 'Homeroom teacher assigned successfully',
+      studentsAssigned: updateResult.affectedRows
+    });
   } catch (error) {
     console.error('Assign homeroom error:', error);
     res.status(500).json({ error: 'Failed to assign homeroom teacher' });

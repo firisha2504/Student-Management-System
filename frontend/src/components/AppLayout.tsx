@@ -52,7 +52,10 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             {role === "student" && (
               <>
                 <NavLink to="/portal" icon={<BookOpen className="h-4 w-4" />} label="My Grades" />
-                <NavLink to="/student-register" icon={<FileCheck className="h-4 w-4" />} label="Register" />
+                {/* Hide Register link for Grade 12 students and students already registered for current year */}
+                {profile?.grade_level !== 12 && (
+                  <NavLink to="/student-register" icon={<FileCheck className="h-4 w-4" />} label="Register" />
+                )}
               </>
             )}
             {role === "teacher" && (

@@ -279,6 +279,27 @@ export const api = {
     });
   },
 
+  // Registration Period Management
+  async getRegistrationPeriodSettings() {
+    return apiRequest('/registration/period-settings');
+  },
+
+  async updateRegistrationPeriodSettings(settings: {
+    registration_open: boolean;
+    registration_start_date?: string;
+    registration_end_date?: string;
+    registration_academic_year?: string;
+  }) {
+    return apiRequest('/registration/period-settings', {
+      method: 'POST',
+      body: JSON.stringify(settings),
+    });
+  },
+
+  async isRegistrationOpen() {
+    return apiRequest('/registration/is-open');
+  },
+
   async getUnregisteredStudents(academicYear?: string) {
     const params = new URLSearchParams();
     if (academicYear) params.append('academic_year', academicYear);
@@ -554,7 +575,6 @@ export const api = {
       method: 'DELETE',
     });
   },
-};
 
   // Homeroom
   async getMyHomeroom() {
@@ -594,3 +614,4 @@ export const api = {
       method: 'DELETE',
     });
   },
+};

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { api } from "@/services/api";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent } from "@/components/ui/card";
@@ -254,7 +254,7 @@ export default function StudentPortal() {
                 {teacherEntries.map(([teacher, bds]) => {
                   const isTeacherCollapsed = collapsedTeachers.has(teacher);
                   return (
-                    <>
+                    <React.Fragment key={teacher}>
                       {bds.map((bd, idx) => {
                         const s = bd.subject;
                         const hasAssessments = bd.assessments.length > 0;
@@ -405,7 +405,7 @@ export default function StudentPortal() {
                           </Collapsible>
                         );
                       })}
-                    </>
+                    </React.Fragment>
                   );
                 })}
               </TableBody>

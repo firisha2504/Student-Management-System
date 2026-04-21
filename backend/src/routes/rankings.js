@@ -19,8 +19,8 @@ router.get('/by-grade', authenticate, async (req, res) => {
     const [settings] = await pool.query(
       "SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ('current_term', 'current_academic_year')"
     );
-    const currentTerm = term || settings.find(s => s.setting_key === 'current_term')?.setting_value || 'Term 1';
-    const currentYear = academic_year || settings.find(s => s.setting_key === 'current_academic_year')?.setting_value || '2024-2025';
+    const currentTerm = term || settings.find(s => s.setting_key === 'current_term')?.setting_value || 'Semester 1';
+    const currentYear = academic_year || settings.find(s => s.setting_key === 'current_academic_year')?.setting_value || '2025-2026';
     
     // For students, check if rankings are approved
     if (userRole === 'student') {
@@ -78,6 +78,12 @@ router.get('/by-grade', authenticate, async (req, res) => {
     `;
     
     const [students] = await pool.query(query, params);
+    
+    console.log('Rankings query executed - Grade:', grade_level, 'Stream:', stream, 'Term:', currentTerm, 'Year:', currentYear);
+    console.log('Found students for rankings:', students.length);
+    if (students.length > 0) {
+      console.log('Top student:', students[0].full_name, 'Average:', students[0].average_score);
+    }
     
     // Add rank to each student
     const rankings = students.map((student, index) => ({
@@ -185,8 +191,10 @@ router.get('/approval-status', authenticate, async (req, res) => {
     const [settings] = await pool.query(
       "SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ('current_term', 'current_academic_year')"
     );
-    const currentTerm = term || settings.find(s => s.setting_key === 'current_term')?.setting_value || 'Term 1';
-    const currentYear = academic_year || settings.find(s => s.setting_key === 'current_academic_year')?.setting_value || '2024-2025';
+    const currentTerm = term || settings.find(s => s.setting_key === 'current_term')?.setting_value || 'Semester 1';
+    const currentYear = academic_year || settings.find(s => s.setting_key === 'current_academic_year')?.setting_value || '2025-2026';
+    
+    console.log('Rankings approval check - Grade:', grade_level, 'Stream:', stream, 'Term:', currentTerm, 'Year:', currentYear);
     
     const [approval] = await pool.query(
       `SELECT id, approved_at, approved_by FROM ranking_approvals 
@@ -196,6 +204,8 @@ router.get('/approval-status', authenticate, async (req, res) => {
        AND academic_year = ?`,
       [grade_level, stream || null, stream || null, currentTerm, currentYear]
     );
+    
+    console.log('Found approvals:', approval.length);
     
     res.json({
       approved: approval.length > 0,
@@ -217,8 +227,8 @@ router.get('/top10', authenticate, authorize('director'), async (req, res) => {
     const [settings] = await pool.query(
       "SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ('current_term', 'current_academic_year')"
     );
-    const currentTerm = term || settings.find(s => s.setting_key === 'current_term')?.setting_value || 'Term 1';
-    const currentYear = academic_year || settings.find(s => s.setting_key === 'current_academic_year')?.setting_value || '2024-2025';
+    const currentTerm = term || settings.find(s => s.setting_key === 'current_term')?.setting_value || 'Semester 1';
+    const currentYear = academic_year || settings.find(s => s.setting_key === 'current_academic_year')?.setting_value || '2025-2026';
     
     // Build query to calculate top 10 rankings across all grades using assessment_scores
     const query = `
@@ -247,6 +257,9 @@ router.get('/top10', authenticate, authorize('director'), async (req, res) => {
     
     const [students] = await pool.query(query, [currentTerm, currentYear]);
     
+    console.log('Top 10 query executed - Term:', currentTerm, 'Year:', currentYear);
+    console.log('Found students for top 10:', students.length);
+    
     // Add rank to each student
     const rankings = students.map((student, index) => ({
       user_id: student.user_id,
@@ -257,6 +270,8 @@ router.get('/top10', authenticate, authorize('director'), async (req, res) => {
       average: Math.round(student.average_score * 100) / 100,
       rank: index + 1
     }));
+    
+    console.log('Top 10 rankings prepared:', rankings.length, 'students');
     
     res.json({ rankings });
     

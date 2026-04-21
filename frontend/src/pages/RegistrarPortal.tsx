@@ -31,11 +31,12 @@ interface StudentProfile {
   parent_count: number;
 }
 
-type RegistrarSection = "students" | "register" | "academic";
+type RegistrarSection = "students" | "register" | "registration-period" | "academic";
 
 const sidebarItems: { id: RegistrarSection; label: string; icon: React.ElementType }[] = [
   { id: "students", label: "Students", icon: Users },
   { id: "register", label: "Register", icon: UserPlus },
+  { id: "registration-period", label: "Registration Period", icon: ClipboardList },
   { id: "academic", label: "Academic Year", icon: History },
 ];
 

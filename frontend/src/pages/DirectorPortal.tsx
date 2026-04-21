@@ -120,9 +120,9 @@ export default function DirectorPortal() {
   const [homeroomDialogOpen, setHomeroomDialogOpen] = useState(false);
   const [selectedHomeroomTeacher, setSelectedHomeroomTeacher] = useState<number | null>(null);
   const [homeroomGrade, setHomeroomGrade] = useState<number>(9);
-  const [homeroomSection, setHomeroomSection] = useState<string>("");
-  const [homeroomSubSection, setHomeroomSubSection] = useState<string>("");
-  const [homeroomStream, setHomeroomStream] = useState<string>("");
+  const [homeroomSection, setHomeroomSection] = useState<string>("all");
+  const [homeroomSubSection, setHomeroomSubSection] = useState<string>("all");
+  const [homeroomStream, setHomeroomStream] = useState<string>("all");
   const [savingHomeroom, setSavingHomeroom] = useState(false);
 
   const [successModal, setSuccessModal] = useState<{ title: string; description?: string } | null>(null);
@@ -256,9 +256,9 @@ export default function DirectorPortal() {
   const openHomeroomDialog = (teacherId: number) => {
     setSelectedHomeroomTeacher(teacherId);
     setHomeroomGrade(9);
-    setHomeroomSection("");
-    setHomeroomSubSection("");
-    setHomeroomStream("");
+    setHomeroomSection("all");
+    setHomeroomSubSection("all");
+    setHomeroomStream("all");
     setHomeroomDialogOpen(true);
   };
 
@@ -270,9 +270,9 @@ export default function DirectorPortal() {
       await api.assignHomeroomTeacher({
         teacher_id: selectedHomeroomTeacher,
         grade_level: homeroomGrade,
-        section: homeroomSection || undefined,
-        sub_section: homeroomSubSection || undefined,
-        stream: homeroomStream || undefined,
+        section: homeroomSection === "all" ? undefined : homeroomSection,
+        sub_section: homeroomSubSection === "all" ? undefined : homeroomSubSection,
+        stream: homeroomStream === "all" ? undefined : homeroomStream,
         academic_year: `${currentYear}-${currentYear + 1}`,
       });
       setSuccessModal({ 
@@ -394,6 +394,12 @@ export default function DirectorPortal() {
   };
 
   const fetchRankings = async () => {
+    // Validate stream requirement for Grade 11/12
+    if (needsStream && !rankStream) {
+      toast({ title: "Error", description: "Please select a stream for Grade 11/12", variant: "destructive" });
+      return;
+    }
+
     setLoadingRankings(true);
     try {
       const filters: any = { grade_level: parseInt(rankGrade) };
@@ -420,13 +426,30 @@ export default function DirectorPortal() {
   };
 
   const togglePublishRankings = async () => {
+    // Validate stream requirement for Grade 11/12
+    if (needsStream && !rankStream) {
+      toast({ title: "Error", description: "Please select a stream for Grade 11/12", variant: "destructive" });
+      return;
+    }
+
     setPublishingRankings(true);
     try {
+      // Get current academic year - if we're in April 2026, we're in 2025-2026 academic year
+      const currentDate = new Date();
+      const currentMonth = currentDate.getMonth(); // 0-11
+      const currentCalendarYear = currentDate.getFullYear();
+      
+      // Academic year starts in September (month 8), so:
+      // Jan-Aug: we're in (year-1)-(year) academic year
+      // Sep-Dec: we're in (year)-(year+1) academic year
+      const academicStartYear = currentMonth >= 8 ? currentCalendarYear : currentCalendarYear - 1;
+      const academicEndYear = academicStartYear + 1;
+      
       const filters: any = {
         grade_level: parseInt(rankGrade),
         stream: rankStream || undefined,
-        term: 'current', // TODO: Make this dynamic
-        academic_year: new Date().getFullYear().toString(),
+        term: 'Semester 1', // Use actual term format
+        academic_year: `${academicStartYear}-${academicEndYear}`, // Use proper academic year format
       };
       
       if (rankSection && rankSection !== "all") filters.section = rankSection;
@@ -1189,7 +1212,7 @@ export default function DirectorPortal() {
                   <SelectValue placeholder="Select section" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Sections</SelectItem>
+                  <SelectItem value="all">All Sections</SelectItem>
                   <SelectItem value="oromo">Oromo</SelectItem>
                   <SelectItem value="amharic">Amharic</SelectItem>
                   <SelectItem value="somali">Somali</SelectItem>
@@ -1203,7 +1226,7 @@ export default function DirectorPortal() {
                   <SelectValue placeholder="Select sub-section" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Sub-Sections</SelectItem>
+                  <SelectItem value="all">All Sub-Sections</SelectItem>
                   {["A", "B", "C", "D", "E", "F", "G", "H"].map((s) => (
                     <SelectItem key={s} value={s}>{s}</SelectItem>
                   ))}
@@ -1218,7 +1241,7 @@ export default function DirectorPortal() {
                     <SelectValue placeholder="Select stream" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All Streams</SelectItem>
+                    <SelectItem value="all">All Streams</SelectItem>
                     <SelectItem value="natural">Natural</SelectItem>
                     <SelectItem value="social">Social</SelectItem>
                   </SelectContent>
