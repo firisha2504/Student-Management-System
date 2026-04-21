@@ -211,13 +211,20 @@ export default function RegistrarPortal() {
 
   if (role !== "registrar") return <p className="text-destructive">Access denied.</p>;
 
-  const filtered = students.filter(s => {
-    const q = searchQuery.toLowerCase();
-    if (q && !s.full_name.toLowerCase().includes(q) && !s.id_number.toLowerCase().includes(q)) return false;
-    if (filterGrade !== "all" && s.grade_level?.toString() !== filterGrade) return false;
-    if (filterStream !== "all" && s.stream !== filterStream) return false;
-    return true;
-  });
+  const filtered = students
+    .filter(s => {
+      const q = searchQuery.toLowerCase();
+      if (q && !s.full_name.toLowerCase().includes(q) && !s.id_number.toLowerCase().includes(q)) return false;
+      if (filterGrade !== "all" && s.grade_level?.toString() !== filterGrade) return false;
+      if (filterStream !== "all" && s.stream !== filterStream) return false;
+      return true;
+    })
+    .sort((a, b) => {
+      // Sort by ID number in ascending order
+      const idA = a.id_number || '';
+      const idB = b.id_number || '';
+      return idA.localeCompare(idB, undefined, { numeric: true });
+    });
 
   const addUserRow = () => {
     const nextNum = nextStudentNum + userRows.length;
