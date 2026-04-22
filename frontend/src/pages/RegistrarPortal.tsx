@@ -1353,7 +1353,7 @@ export default function RegistrarPortal() {
 
       {/* Bulk Assignment Dialog */}
       <Dialog open={bulkDialogOpen} onOpenChange={setBulkDialogOpen}>
-        <DialogContent aria-describedby={undefined} className="sm:max-w-md">
+        <DialogContent aria-describedby={undefined} className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Bulk Assign Students</DialogTitle>
             <p className="text-xs text-muted-foreground">
@@ -1364,7 +1364,7 @@ export default function RegistrarPortal() {
           {/* Quick Presets */}
           <div className="space-y-2">
             <Label className="text-xs font-semibold">Quick Presets</Label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-1">
               <Button
                 size="sm"
                 variant="outline"
@@ -1374,7 +1374,7 @@ export default function RegistrarPortal() {
                   setBulkSection("oromo");
                   setBulkSubSection("A");
                 }}
-                className="rounded-lg text-xs"
+                className="rounded-lg text-[10px] h-7"
               >
                 Grade 9 - Oromo A
               </Button>
@@ -1387,7 +1387,7 @@ export default function RegistrarPortal() {
                   setBulkSection("amharic");
                   setBulkSubSection("A");
                 }}
-                className="rounded-lg text-xs"
+                className="rounded-lg text-[10px] h-7"
               >
                 Grade 10 - Amharic A
               </Button>
@@ -1400,7 +1400,7 @@ export default function RegistrarPortal() {
                   setBulkSection("oromo");
                   setBulkSubSection("A");
                 }}
-                className="rounded-lg text-xs"
+                className="rounded-lg text-[10px] h-7"
               >
                 Grade 11 - Natural
               </Button>
@@ -1413,31 +1413,31 @@ export default function RegistrarPortal() {
                   setBulkSection("somali");
                   setBulkSubSection("A");
                 }}
-                className="rounded-lg text-xs"
+                className="rounded-lg text-[10px] h-7"
               >
                 Grade 12 - Social
               </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  setBulkGrade("");
-                  setBulkStream("");
-                  setBulkSection("");
-                  setBulkSubSection("");
-                }}
-                className="rounded-lg text-xs col-span-2"
-              >
-                Clear All Fields
-              </Button>
             </div>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setBulkGrade("");
+                setBulkStream("");
+                setBulkSection("");
+                setBulkSubSection("");
+              }}
+              className="rounded-lg text-xs w-full h-7"
+            >
+              Clear All Fields
+            </Button>
           </div>
           
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Grade Level</Label>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Grade Level</Label>
               <Select value={bulkGrade} onValueChange={setBulkGrade}>
-                <SelectTrigger className="rounded-xl">
+                <SelectTrigger className="rounded-xl h-8">
                   <SelectValue placeholder="Keep current grade" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1449,10 +1449,10 @@ export default function RegistrarPortal() {
               </Select>
             </div>
             
-            <div className="space-y-2">
-              <Label>Stream</Label>
+            <div className="space-y-1">
+              <Label className="text-xs">Stream</Label>
               <Select value={bulkStream} onValueChange={setBulkStream}>
-                <SelectTrigger className="rounded-xl">
+                <SelectTrigger className="rounded-xl h-8">
                   <SelectValue placeholder="Keep current stream" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1463,10 +1463,10 @@ export default function RegistrarPortal() {
               </Select>
             </div>
             
-            <div className="space-y-2">
-              <Label>Section</Label>
+            <div className="space-y-1">
+              <Label className="text-xs">Section</Label>
               <Select value={bulkSection} onValueChange={setBulkSection}>
-                <SelectTrigger className="rounded-xl">
+                <SelectTrigger className="rounded-xl h-8">
                   <SelectValue placeholder="Keep current section" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1478,10 +1478,10 @@ export default function RegistrarPortal() {
               </Select>
             </div>
             
-            <div className="space-y-2">
-              <Label>Sub-Section</Label>
+            <div className="space-y-1">
+              <Label className="text-xs">Sub-Section</Label>
               <Select value={bulkSubSection} onValueChange={setBulkSubSection}>
-                <SelectTrigger className="rounded-xl">
+                <SelectTrigger className="rounded-xl h-8">
                   <SelectValue placeholder="Keep current sub-section" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1494,14 +1494,14 @@ export default function RegistrarPortal() {
             </div>
           </div>
           
-          <div className="flex gap-3 mt-4">
+          <div className="flex gap-2 pt-2">
             <DialogClose asChild>
-              <Button variant="outline" className="flex-1 rounded-xl">Cancel</Button>
+              <Button variant="outline" className="flex-1 rounded-xl h-8 text-xs">Cancel</Button>
             </DialogClose>
             <Button
               onClick={handleBulkAssignment}
               disabled={bulkAssigning}
-              className="flex-1 rounded-xl gradient-primary border-0 text-white"
+              className="flex-1 rounded-xl gradient-primary border-0 text-white h-8 text-xs"
             >
               {bulkAssigning ? "Updating..." : "Update Students"}
             </Button>
