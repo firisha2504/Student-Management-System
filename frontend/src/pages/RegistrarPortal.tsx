@@ -12,10 +12,11 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { UserPlus, Users, Search, Camera, Link2, History, Menu, ChevronLeft, ChevronRight, ClipboardList, CheckSquare, Trash2, ChevronDown, ChevronUp } from "lucide-react";
+import { UserPlus, Users, Search, Camera, Link2, History, Menu, ChevronLeft, ChevronRight, ClipboardList, CheckSquare, Trash2, ChevronDown } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import SuccessModal from "@/components/SuccessModal";
+import { SimpleAcademicYearSelect } from "@/components/ConfigurableSelects";
 
 interface StudentProfile {
   user_id: string;
@@ -1011,7 +1012,7 @@ export default function RegistrarPortal() {
                   <div className="flex items-center gap-2">
                     <Checkbox 
                       checked={autoAssignClass} 
-                      onCheckedChange={setAutoAssignClass}
+                      onCheckedChange={(checked) => setAutoAssignClass(checked === true)}
                       id="auto-assign"
                     />
                     <Label htmlFor="auto-assign" className="text-xs cursor-pointer">
@@ -1023,7 +1024,7 @@ export default function RegistrarPortal() {
                 {/* Quick Presets */}
                 <div className="space-y-2">
                   <Label className="text-xs font-semibold">Quick Presets</Label>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <Button
                       size="sm"
                       variant="outline"
@@ -1084,7 +1085,7 @@ export default function RegistrarPortal() {
                 </div>
                 
                 {autoAssignClass && (
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="space-y-1">
                       <Label className="text-xs">Grade Level</Label>
                       <Select value={registrationGrade} onValueChange={setRegistrationGrade}>
@@ -1283,11 +1284,11 @@ export default function RegistrarPortal() {
                         <Label className="text-sm font-semibold">Enable Registration</Label>
                         <Checkbox 
                           checked={registrationOpen}
-                          onCheckedChange={setRegistrationOpen}
+                          onCheckedChange={(checked) => setRegistrationOpen(checked === true)}
                         />
                       </div>
 
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <Label className="text-sm font-semibold">Start Date</Label>
                           <Input
@@ -1310,10 +1311,10 @@ export default function RegistrarPortal() {
 
                       <div className="space-y-2">
                         <Label className="text-sm font-semibold">Academic Year for Registration</Label>
-                        <Input
+                        <SimpleAcademicYearSelect
                           value={registrationAcademicYear}
-                          onChange={(e) => setRegistrationAcademicYear(e.target.value)}
-                          placeholder="e.g., 2026-2027"
+                          onValueChange={setRegistrationAcademicYear}
+                          placeholder="Select academic year for registration"
                           className="rounded-xl"
                         />
                         <p className="text-xs text-muted-foreground">
@@ -1391,7 +1392,7 @@ export default function RegistrarPortal() {
 
       case "academic":
         return (
-          <div className="space-y-6 max-w-lg">
+          <div className="space-y-6 w-full max-w-lg sm:max-w-2xl">
             <div>
               <h2 className="text-xl font-bold text-foreground">Academic Year</h2>
               <p className="text-sm text-muted-foreground">Manage the active academic year and archive results</p>
@@ -1434,10 +1435,15 @@ export default function RegistrarPortal() {
                   )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <Label className="text-xs">Year (e.g., 2025/2026)</Label>
-                    <Input value={settingYear} onChange={e => setSettingYear(e.target.value)} placeholder="2025/2026" className="h-10 rounded-xl" />
+                    <Label className="text-xs">Academic Year</Label>
+                    <SimpleAcademicYearSelect
+                      value={settingYear.replace('/', '-')}
+                      onValueChange={(value) => setSettingYear(value.replace('-', '/'))}
+                      placeholder="Select academic year"
+                      className="h-10 rounded-xl"
+                    />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Semester</Label>
@@ -1462,12 +1468,17 @@ export default function RegistrarPortal() {
                   <div><p className="font-semibold text-foreground">Archive Academic Year</p><p className="text-sm text-muted-foreground">Permanently store all student results for an academic year</p></div>
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-xs">Academic Year (e.g., 2025/2026)</Label>
-                  <Input value={archiveYear} onChange={(e) => setArchiveYear(e.target.value)} placeholder="2025/2026" className="h-10 rounded-xl" />
+                  <Label className="text-xs">Academic Year to Archive</Label>
+                  <SimpleAcademicYearSelect
+                    value={archiveYear.replace('/', '-')}
+                    onValueChange={(value) => setArchiveYear(value.replace('-', '/'))}
+                    placeholder="Select year to archive"
+                    className="h-10 rounded-xl"
+                  />
                 </div>
                 <Button
                   onClick={() => {
-                    if (!archiveYear || !/^\d{4}\/\d{4}$/.test(archiveYear)) { toast({ title: "Error", description: "Enter a valid academic year (e.g., 2025/2026)", variant: "destructive" }); return; }
+                    if (!archiveYear || !/^\d{4}[\/\-]\d{4}$/.test(archiveYear)) { toast({ title: "Error", description: "Please select a valid academic year", variant: "destructive" }); return; }
                     setArchiveConfirmOpen(true);
                   }}
                   disabled={archiving}
@@ -1759,7 +1770,7 @@ export default function RegistrarPortal() {
           {/* Quick Presets */}
           <div className="space-y-2">
             <Label className="text-xs font-semibold">Quick Presets</Label>
-            <div className="grid grid-cols-2 gap-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
               <Button
                 size="sm"
                 variant="outline"

@@ -29,6 +29,9 @@ export interface SchoolConfig {
     admin: string;
     parent: string;
   };
+  system: {
+    emailDomain: string;
+  };
   features: {
     enableStreams: boolean;
     enableSections: boolean;
@@ -58,7 +61,7 @@ export const DEFAULT_SCHOOL_CONFIG: SchoolConfig = {
     subSections: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'],
     terms: ['Semester 1', 'Semester 2'],
     calendarSystem: 'both',
-    primaryCalendar: 'gregorian',
+    primaryCalendar: 'ethiopian',
     enableCalendarConversion: true
   },
   idPrefixes: {
@@ -68,6 +71,9 @@ export const DEFAULT_SCHOOL_CONFIG: SchoolConfig = {
     director: 'MJD',
     admin: 'MJA',
     parent: 'MJP'
+  },
+  system: {
+    emailDomain: 'school.com'
   },
   features: {
     enableStreams: true,

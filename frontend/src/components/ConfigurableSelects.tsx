@@ -10,6 +10,9 @@ import {
   useIsSubSectionEnabled
 } from "@/contexts/SchoolConfigContext";
 
+// Re-export AcademicYearSelect components
+export { AcademicYearSelect, SimpleAcademicYearSelect, ManualAcademicYearInput } from "./AcademicYearSelect";
+
 interface BaseSelectProps {
   value: string;
   onValueChange: (value: string) => void;
