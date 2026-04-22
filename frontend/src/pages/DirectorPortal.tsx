@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -119,6 +120,7 @@ export default function DirectorPortal() {
   const [loadingHomeroom, setLoadingHomeroom] = useState(false);
   const [homeroomDialogOpen, setHomeroomDialogOpen] = useState(false);
   const [selectedHomeroomTeacher, setSelectedHomeroomTeacher] = useState<number | null>(null);
+  const [editingAssignmentId, setEditingAssignmentId] = useState<number | null>(null);
   const [homeroomGrade, setHomeroomGrade] = useState<number>(9);
   const [homeroomSection, setHomeroomSection] = useState<string>("all");
   const [homeroomSubSection, setHomeroomSubSection] = useState<string>("all");
@@ -255,6 +257,7 @@ export default function DirectorPortal() {
 
   const openHomeroomDialog = (teacherId: number) => {
     setSelectedHomeroomTeacher(teacherId);
+    setEditingAssignmentId(null); // Reset editing state for new assignment
     setHomeroomGrade(9);
     setHomeroomSection("all");
     setHomeroomSubSection("all");
@@ -267,28 +270,44 @@ export default function DirectorPortal() {
     setSavingHomeroom(true);
     try {
       const currentYear = new Date().getFullYear();
-      await api.assignHomeroomTeacher({
+      const assignmentData = {
         teacher_id: selectedHomeroomTeacher,
         grade_level: homeroomGrade,
         section: homeroomSection === "all" ? undefined : homeroomSection,
         sub_section: homeroomSubSection === "all" ? undefined : homeroomSubSection,
         stream: homeroomStream === "all" ? undefined : homeroomStream,
         academic_year: `${currentYear}-${currentYear + 1}`,
-      });
-      setSuccessModal({ 
-        title: "Homeroom Assigned", 
-        description: "Teacher has been assigned as homeroom teacher" 
-      });
+      };
+
+      if (editingAssignmentId) {
+        // Update existing assignment
+        await api.updateHomeroomAssignment(editingAssignmentId, assignmentData);
+        setSuccessModal({ 
+          title: "Homeroom Updated", 
+          description: "Homeroom assignment has been updated successfully" 
+        });
+      } else {
+        // Create new assignment
+        await api.assignHomeroomTeacher(assignmentData);
+        setSuccessModal({ 
+          title: "Homeroom Assigned", 
+          description: "Teacher has been assigned as homeroom teacher" 
+        });
+      }
+      
       setHomeroomDialogOpen(false);
+      setEditingAssignmentId(null); // Reset editing state
       await fetchHomeroomAssignments();
     } catch (err: any) {
-      toast({ title: "Error", description: err.message || "Failed to assign homeroom", variant: "destructive" });
+      toast({ title: "Error", description: err.message || "Failed to save homeroom assignment", variant: "destructive" });
     }
     setSavingHomeroom(false);
   };
 
+  // Homeroom removal confirmation
+  const [removeHomeroomConfirm, setRemoveHomeroomConfirm] = useState<number | null>(null);
+
   const removeHomeroom = async (assignmentId: number) => {
-    if (!confirm("Are you sure you want to remove this homeroom assignment?")) return;
     try {
       await api.removeHomeroomAssignment(assignmentId);
       setSuccessModal({ title: "Homeroom Removed", description: "Homeroom assignment has been removed" });
@@ -296,6 +315,18 @@ export default function DirectorPortal() {
     } catch (err: any) {
       toast({ title: "Error", description: err.message || "Failed to remove homeroom", variant: "destructive" });
     }
+    setRemoveHomeroomConfirm(null);
+  };
+
+  const editHomeroom = (assignment: any) => {
+    // Pre-fill the dialog with current assignment data
+    setSelectedHomeroomTeacher(assignment.teacher_id);
+    setEditingAssignmentId(assignment.id); // Set the assignment ID for editing
+    setHomeroomGrade(assignment.grade_level);
+    setHomeroomSection(assignment.section || "all");
+    setHomeroomSubSection(assignment.sub_section || "all");
+    setHomeroomStream(assignment.stream || "all");
+    setHomeroomDialogOpen(true);
   };
 
   const printTop10 = () => {
@@ -983,14 +1014,24 @@ export default function DirectorPortal() {
                                 </Badge>
                               </TableCell>
                               <TableCell className="text-right">
-                                <Button
-                                  size="sm"
-                                  variant="destructive"
-                                  className="rounded-lg text-xs"
-                                  onClick={() => removeHomeroom(assignment.id)}
-                                >
-                                  Remove
-                                </Button>
+                                <div className="flex gap-2 justify-end">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="rounded-lg text-xs"
+                                    onClick={() => editHomeroom(assignment)}
+                                  >
+                                    Edit
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="destructive"
+                                    className="rounded-lg text-xs"
+                                    onClick={() => setRemoveHomeroomConfirm(assignment.id)}
+                                  >
+                                    Remove
+                                  </Button>
+                                </div>
                               </TableCell>
                             </TableRow>
                           ))
@@ -1185,10 +1226,17 @@ export default function DirectorPortal() {
       </Dialog>
 
       {/* Homeroom Assignment Dialog */}
-      <Dialog open={homeroomDialogOpen} onOpenChange={setHomeroomDialogOpen}>
+      <Dialog open={homeroomDialogOpen} onOpenChange={(open) => {
+        setHomeroomDialogOpen(open);
+        if (!open) {
+          setEditingAssignmentId(null); // Reset editing state when dialog closes
+        }
+      }}>
         <DialogContent aria-describedby={undefined} className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Assign Homeroom Teacher</DialogTitle>
+            <DialogTitle>
+              {editingAssignmentId ? "Edit Homeroom Assignment" : "Assign Homeroom Teacher"}
+            </DialogTitle>
             <p className="text-xs text-muted-foreground">Select the class for this homeroom teacher</p>
           </DialogHeader>
           <div className="space-y-4">
@@ -1258,13 +1306,34 @@ export default function DirectorPortal() {
               disabled={savingHomeroom}
               className="flex-1 rounded-xl gradient-primary border-0 text-white"
             >
-              {savingHomeroom ? "Assigning..." : "Assign"}
+              {savingHomeroom ? "Saving..." : (editingAssignmentId ? "Update Assignment" : "Assign Teacher")}
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
       <SuccessModal open={!!successModal} onClose={() => setSuccessModal(null)} title={successModal?.title || ""} description={successModal?.description} />
+
+      {/* Homeroom Removal Confirmation */}
+      <AlertDialog open={!!removeHomeroomConfirm} onOpenChange={() => setRemoveHomeroomConfirm(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Homeroom Assignment</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove this homeroom assignment? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={() => removeHomeroomConfirm && removeHomeroom(removeHomeroomConfirm)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Remove Assignment
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

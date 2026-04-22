@@ -86,10 +86,15 @@ export default function RegistrarPortal() {
   const [deleteYearConfirm, setDeleteYearConfirm] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  // Bulk sub-section assignment
+  // Bulk assignment (enhanced)
   const [selectedStudents, setSelectedStudents] = useState<Set<string>>(new Set());
+  const [bulkGrade, setBulkGrade] = useState("");
+  const [bulkStream, setBulkStream] = useState("");
+  const [bulkSection, setBulkSection] = useState("");
   const [bulkSubSection, setBulkSubSection] = useState("");
   const [bulkAssigning, setBulkAssigning] = useState(false);
+  const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
+  const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
 
   // Current academic year
   const [currentAcademicYear, setCurrentAcademicYear] = useState<string | null>(null);
@@ -97,6 +102,15 @@ export default function RegistrarPortal() {
   const [settingYear, setSettingYear] = useState("");
   const [settingTerm, setSettingTerm] = useState("");
   const [savingSettings, setSavingSettings] = useState(false);
+
+  // Registration period management
+  const [registrationSettings, setRegistrationSettings] = useState<any>(null);
+  const [loadingRegistrationSettings, setLoadingRegistrationSettings] = useState(false);
+  const [savingRegistrationSettings, setSavingRegistrationSettings] = useState(false);
+  const [registrationOpen, setRegistrationOpen] = useState(false);
+  const [registrationStartDate, setRegistrationStartDate] = useState("");
+  const [registrationEndDate, setRegistrationEndDate] = useState("");
+  const [registrationAcademicYear, setRegistrationAcademicYear] = useState("");
 
   useEffect(() => {
     api.getCurrentAcademicYear().then((d: any) => {
@@ -169,7 +183,48 @@ export default function RegistrarPortal() {
     if (activeSection === 'academic') {
       fetchArchivedYears();
     }
+    if (activeSection === 'registration-period') {
+      fetchRegistrationSettings();
+    }
   }, [activeSection]);
+
+  const fetchRegistrationSettings = async () => {
+    setLoadingRegistrationSettings(true);
+    try {
+      const settings = await api.getRegistrationPeriodSettings();
+      setRegistrationSettings(settings);
+      setRegistrationOpen(settings.registration_open === 'true');
+      setRegistrationStartDate(settings.registration_start_date || '');
+      setRegistrationEndDate(settings.registration_end_date || '');
+      setRegistrationAcademicYear(settings.registration_academic_year || '');
+    } catch (error: any) {
+      console.error('Failed to fetch registration settings:', error);
+      toast({ title: "Error", description: "Failed to load registration settings", variant: "destructive" });
+    }
+    setLoadingRegistrationSettings(false);
+  };
+
+  const handleUpdateRegistrationSettings = async () => {
+    setSavingRegistrationSettings(true);
+    try {
+      const settings = {
+        registration_open: registrationOpen,
+        registration_start_date: registrationStartDate,
+        registration_end_date: registrationEndDate,
+        registration_academic_year: registrationAcademicYear,
+      };
+      
+      await api.updateRegistrationPeriodSettings(settings);
+      toast({ 
+        title: "Success", 
+        description: `Registration ${registrationOpen ? 'opened' : 'closed'} successfully` 
+      });
+      await fetchRegistrationSettings(); // Refresh settings
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to update registration settings", variant: "destructive" });
+    }
+    setSavingRegistrationSettings(false);
+  };
 
   const fetchStudents = async () => {
     setLoading(true);
@@ -221,7 +276,37 @@ export default function RegistrarPortal() {
       return true;
     })
     .sort((a, b) => {
-      // Sort by ID number in ascending order
+      // Primary sort: by grade level (ascending: 9, 10, 11, 12)
+      const gradeA = a.grade_level || 0;
+      const gradeB = b.grade_level || 0;
+      if (gradeA !== gradeB) {
+        return gradeA - gradeB;
+      }
+      
+      // Secondary sort: by stream (natural before social)
+      const streamA = a.stream || '';
+      const streamB = b.stream || '';
+      if (streamA !== streamB) {
+        if (streamA === 'natural' && streamB === 'social') return -1;
+        if (streamA === 'social' && streamB === 'natural') return 1;
+        return streamA.localeCompare(streamB);
+      }
+      
+      // Tertiary sort: by section (alphabetical)
+      const sectionA = a.section || '';
+      const sectionB = b.section || '';
+      if (sectionA !== sectionB) {
+        return sectionA.localeCompare(sectionB);
+      }
+      
+      // Quaternary sort: by sub-section (alphabetical)
+      const subSectionA = a.sub_section || '';
+      const subSectionB = b.sub_section || '';
+      if (subSectionA !== subSectionB) {
+        return subSectionA.localeCompare(subSectionB);
+      }
+      
+      // Final sort: by ID number (ascending)
       const idA = a.id_number || '';
       const idB = b.id_number || '';
       return idA.localeCompare(idB, undefined, { numeric: true });
@@ -418,30 +503,82 @@ export default function RegistrarPortal() {
     }
   };
 
-  const handleBulkAssignSubSection = async () => {
-    if (selectedStudents.size === 0 || !bulkSubSection) return;
+  const handleBulkAssignment = async () => {
+    if (selectedStudents.size === 0) return;
+    
+    // Check if at least one field is selected
+    if (!bulkGrade && !bulkStream && !bulkSection && !bulkSubSection) {
+      toast({ title: "Error", description: "Please select at least one field to update", variant: "destructive" });
+      return;
+    }
+    
+    // Confirmation for large operations
+    if (selectedStudents.size > 20) {
+      setBulkConfirmOpen(true);
+      return;
+    }
+    
+    await performBulkAssignment();
+  };
+
+  const performBulkAssignment = async () => {
     setBulkAssigning(true);
+    setBulkConfirmOpen(false);
     
     try {
-      // Update each selected student
-      const updatePromises = Array.from(selectedStudents).map(studentId => 
-        api.updateStudent(studentId, { 
-          sub_section: bulkSubSection === "none" ? null : bulkSubSection 
-        })
-      );
+      // Prepare update data - only include fields that have values
+      const updateData: any = {};
+      if (bulkGrade) updateData.grade_level = bulkGrade === "none" ? null : parseInt(bulkGrade);
+      if (bulkStream) updateData.stream = bulkStream === "none" ? null : bulkStream;
+      if (bulkSection) updateData.section = bulkSection === "none" ? null : bulkSection;
+      if (bulkSubSection) updateData.sub_section = bulkSubSection === "none" ? null : bulkSubSection;
       
-      await Promise.all(updatePromises);
+      // Update each selected student with progress tracking
+      const studentIds = Array.from(selectedStudents);
+      const batchSize = 10; // Process in batches to avoid overwhelming the server
+      
+      for (let i = 0; i < studentIds.length; i += batchSize) {
+        const batch = studentIds.slice(i, i + batchSize);
+        const updatePromises = batch.map(studentId => 
+          api.updateStudent(studentId, updateData)
+        );
+        
+        await Promise.all(updatePromises);
+        
+        // Show progress for large operations
+        if (selectedStudents.size > 20) {
+          const progress = Math.min(i + batchSize, studentIds.length);
+          toast({ 
+            title: "Progress", 
+            description: `Updated ${progress}/${studentIds.length} students...`,
+            duration: 1000
+          });
+        }
+      }
+      
+      // Build success message with details
+      const updates: string[] = [];
+      if (bulkGrade) updates.push(`Grade: ${bulkGrade === "none" ? "Removed" : `Grade ${bulkGrade}`}`);
+      if (bulkStream) updates.push(`Stream: ${bulkStream === "none" ? "Removed" : bulkStream}`);
+      if (bulkSection) updates.push(`Section: ${bulkSection === "none" ? "Removed" : bulkSection}`);
+      if (bulkSubSection) updates.push(`Sub-Section: ${bulkSubSection === "none" ? "Removed" : bulkSubSection}`);
       
       toast({ 
-        title: "Success", 
-        description: `Updated ${selectedStudents.size} student(s)` 
+        title: "Bulk Assignment Complete", 
+        description: `Updated ${selectedStudents.size} student(s) with: ${updates.join(", ")}`,
+        duration: 5000
       });
       
+      // Reset state
       setSelectedStudents(new Set());
+      setBulkGrade("");
+      setBulkStream("");
+      setBulkSection("");
       setBulkSubSection("");
+      setBulkDialogOpen(false);
       fetchStudents(); // Refresh the list
     } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Error", description: error.message || "Failed to update students", variant: "destructive" });
     }
     
     setBulkAssigning(false);
@@ -459,7 +596,24 @@ export default function RegistrarPortal() {
           <div className="space-y-4">
             <div>
               <h2 className="text-xl font-bold text-foreground">Students</h2>
-              <p className="text-sm text-muted-foreground">{students.length} total students</p>
+              <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                <span>{students.length} total students</span>
+                {(() => {
+                  const gradeCounts = students.reduce((acc, student) => {
+                    const grade = student.grade_level || 0;
+                    acc[grade] = (acc[grade] || 0) + 1;
+                    return acc;
+                  }, {} as Record<number, number>);
+                  
+                  return Object.entries(gradeCounts)
+                    .sort(([a], [b]) => Number(a) - Number(b))
+                    .map(([grade, count]) => (
+                      <span key={grade} className="text-xs">
+                        {grade === '0' ? 'Unassigned' : `Grade ${grade}`}: {count}
+                      </span>
+                    ));
+                })()}
+              </div>
             </div>
             <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
               <div className="relative">
@@ -482,6 +636,67 @@ export default function RegistrarPortal() {
                 </SelectContent>
               </Select>
             </div>
+            
+            {/* Quick Selection Actions */}
+            <Card className="border-0 shadow-sm">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold text-foreground">Quick Selection</h3>
+                  <Badge variant="outline" className="text-xs">
+                    {selectedStudents.size} selected
+                  </Badge>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setSelectedStudents(new Set(filtered.filter(s => !s.grade_level).map(s => s.user_id)))}
+                    className="rounded-lg text-xs"
+                  >
+                    Unassigned Grade ({filtered.filter(s => !s.grade_level).length})
+                  </Button>
+                  {[9, 10, 11, 12].map(grade => {
+                    const gradeStudents = filtered.filter(s => s.grade_level === grade);
+                    return (
+                      <Button
+                        key={grade}
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setSelectedStudents(new Set(gradeStudents.map(s => s.user_id)))}
+                        className="rounded-lg text-xs"
+                      >
+                        Grade {grade} ({gradeStudents.length})
+                      </Button>
+                    );
+                  })}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setSelectedStudents(new Set(filtered.filter(s => !s.section).map(s => s.user_id)))}
+                    className="rounded-lg text-xs"
+                  >
+                    No Section ({filtered.filter(s => !s.section).length})
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setSelectedStudents(new Set(filtered.filter(s => !s.sub_section).map(s => s.user_id)))}
+                    className="rounded-lg text-xs"
+                  >
+                    No Sub-Section ({filtered.filter(s => !s.sub_section).length})
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => setSelectedStudents(new Set())}
+                    className="rounded-lg text-xs"
+                  >
+                    Clear Selection
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+            
             <Card className="border-0 shadow-sm overflow-hidden">
               <CardContent className="p-0">
                 <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/30">
@@ -489,15 +704,13 @@ export default function RegistrarPortal() {
                   {selectedStudents.size > 0 && (
                     <div className="flex items-center gap-2">
                       <Badge variant="secondary" className="text-xs">{selectedStudents.size} selected</Badge>
-                      <Select value={bulkSubSection} onValueChange={setBulkSubSection}>
-                        <SelectTrigger className="rounded-xl w-32 h-8 text-xs"><SelectValue placeholder="Sub-Section" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">None</SelectItem>
-                          {["A","B","C","D","E","F","G","H"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                      <Button size="sm" disabled={!bulkSubSection || bulkAssigning} onClick={handleBulkAssignSubSection} className="rounded-lg text-xs gradient-primary border-0 text-white">
-                        <CheckSquare className="h-3 w-3 mr-1" />{bulkAssigning ? "Assigning..." : "Assign"}
+                      <Button 
+                        size="sm" 
+                        onClick={() => setBulkDialogOpen(true)} 
+                        className="rounded-lg text-xs gradient-primary border-0 text-white"
+                      >
+                        <CheckSquare className="h-3 w-3 mr-1" />
+                        Bulk Assign
                       </Button>
                     </div>
                   )}
@@ -524,43 +737,72 @@ export default function RegistrarPortal() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {filtered.map(s => (
-                          <TableRow key={s.user_id} className={cn("hover:bg-muted/30", selectedStudents.has(s.user_id) && "bg-primary/5")}>
-                            <TableCell>
-                              <Checkbox
-                                checked={selectedStudents.has(s.user_id)}
-                                onCheckedChange={() => toggleStudentSelection(s.user_id)}
-                              />
-                            </TableCell>
-                            <TableCell className="font-semibold">{s.full_name}</TableCell>
-                            <TableCell className="font-mono text-sm">{s.id_number}</TableCell>
-                            <TableCell>{s.grade_level || "—"}</TableCell>
-                            <TableCell className="capitalize">{s.stream || "—"}</TableCell>
-                            <TableCell className="capitalize">{s.section || "—"}</TableCell>
-                            <TableCell className="uppercase font-semibold">{s.sub_section || "—"}</TableCell>
-                            <TableCell className="text-sm">
-                              {s.parent_count > 0
-                                ? <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-xs">
-                                    Parent ({s.parent_count})
-                                  </Badge>
-                                : <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30 text-xs">
-                                    No Parent
-                                  </Badge>}
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex gap-2">
-                                <Button size="sm" variant="outline" className="rounded-lg text-xs" onClick={() => openEditDialog(s)}>Edit</Button>
-                                <Button size="sm" variant="outline" className="rounded-lg text-xs" onClick={() => { setImageTargetStudent(s.user_id); fileInputRef.current?.click(); }}>
-                                  <Camera className="h-3 w-3" />
-                                </Button>
-                                <Button size="sm" variant="outline" className="rounded-lg text-xs" onClick={() => openLinkDialog(s)}>
-                                  <Link2 className="h-3 w-3" />
-                                </Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                        {filtered.length === 0 && <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-8">No students found</TableCell></TableRow>}
+                        {(() => {
+                          let currentGrade: number | null = null;
+                          const rows: React.ReactNode[] = [];
+                          
+                          filtered.forEach((s, index) => {
+                            // Add grade level header when grade changes
+                            if (s.grade_level !== currentGrade) {
+                              currentGrade = s.grade_level;
+                              rows.push(
+                                <TableRow key={`grade-${currentGrade}`} className="bg-muted/50">
+                                  <TableCell colSpan={9} className="font-bold text-primary py-3">
+                                    {currentGrade ? `Grade ${currentGrade}` : 'No Grade Assigned'}
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            }
+                            
+                            // Add student row
+                            rows.push(
+                              <TableRow key={s.user_id} className={cn("hover:bg-muted/30", selectedStudents.has(s.user_id) && "bg-primary/5")}>
+                                <TableCell>
+                                  <Checkbox
+                                    checked={selectedStudents.has(s.user_id)}
+                                    onCheckedChange={() => toggleStudentSelection(s.user_id)}
+                                  />
+                                </TableCell>
+                                <TableCell className="font-semibold">{s.full_name}</TableCell>
+                                <TableCell className="font-mono text-sm">{s.id_number}</TableCell>
+                                <TableCell>{s.grade_level || "—"}</TableCell>
+                                <TableCell className="capitalize">{s.stream || "—"}</TableCell>
+                                <TableCell className="capitalize">{s.section || "—"}</TableCell>
+                                <TableCell className="uppercase font-semibold">{s.sub_section || "—"}</TableCell>
+                                <TableCell className="text-sm">
+                                  {s.parent_count > 0
+                                    ? <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-xs">
+                                        Parent ({s.parent_count})
+                                      </Badge>
+                                    : <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30 text-xs">
+                                        No Parent
+                                      </Badge>}
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex gap-2">
+                                    <Button size="sm" variant="outline" className="rounded-lg text-xs" onClick={() => openEditDialog(s)}>Edit</Button>
+                                    <Button size="sm" variant="outline" className="rounded-lg text-xs" onClick={() => { setImageTargetStudent(s.user_id); fileInputRef.current?.click(); }}>
+                                      <Camera className="h-3 w-3" />
+                                    </Button>
+                                    <Button size="sm" variant="outline" className="rounded-lg text-xs" onClick={() => openLinkDialog(s)}>
+                                      <Link2 className="h-3 w-3" />
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          });
+                          
+                          if (filtered.length === 0) {
+                            rows.push(
+                              <TableRow key="no-students">
+                                <TableCell colSpan={9} className="text-center text-muted-foreground py-8">No students found</TableCell>
+                              </TableRow>
+                            );
+                          }
+                          
+                          return rows;
+                        })()}
                       </TableBody>
                     </Table>
                   </div>
@@ -609,6 +851,146 @@ export default function RegistrarPortal() {
                 <p className="text-xs text-muted-foreground text-center">Credentials auto-generated: Username = firstname.lastname.id, Password = pass + ID</p>
               </CardContent>
             </Card>
+          </div>
+        );
+
+      case "registration-period":
+        return (
+          <div className="space-y-6 max-w-2xl">
+            <div>
+              <h2 className="text-xl font-bold text-foreground">Registration Period Management</h2>
+              <p className="text-sm text-muted-foreground">Control when students can register for courses</p>
+            </div>
+
+            {loadingRegistrationSettings ? (
+              <Card className="border-0 shadow-sm">
+                <CardContent className="pt-6">
+                  <p className="text-center text-muted-foreground">Loading registration settings...</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-6">
+                {/* Registration Status */}
+                <Card className="border-0 shadow-sm">
+                  <CardContent className="pt-6 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className={`rounded-xl p-2.5 ${registrationOpen ? 'gradient-primary' : 'bg-muted'}`}>
+                          <ClipboardList className="h-5 w-5 text-white" />
+                        </div>
+                        <div>
+                          <p className="font-semibold text-foreground">Registration Status</p>
+                          <p className="text-xs text-muted-foreground">
+                            {registrationOpen ? 'Students can register for courses' : 'Registration is closed'}
+                          </p>
+                        </div>
+                      </div>
+                      <Badge 
+                        className={cn(
+                          "text-xs font-bold",
+                          registrationOpen 
+                            ? "gradient-primary border-0 text-white" 
+                            : "bg-muted text-muted-foreground"
+                        )}
+                      >
+                        {registrationOpen ? 'OPEN' : 'CLOSED'}
+                      </Badge>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Registration Settings */}
+                <Card className="border-0 shadow-sm">
+                  <CardContent className="pt-6 space-y-4">
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-sm font-semibold">Enable Registration</Label>
+                        <Checkbox 
+                          checked={registrationOpen}
+                          onCheckedChange={setRegistrationOpen}
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label className="text-sm font-semibold">Start Date</Label>
+                          <Input
+                            type="date"
+                            value={registrationStartDate}
+                            onChange={(e) => setRegistrationStartDate(e.target.value)}
+                            className="rounded-xl"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-sm font-semibold">End Date</Label>
+                          <Input
+                            type="date"
+                            value={registrationEndDate}
+                            onChange={(e) => setRegistrationEndDate(e.target.value)}
+                            className="rounded-xl"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label className="text-sm font-semibold">Academic Year for Registration</Label>
+                        <Input
+                          value={registrationAcademicYear}
+                          onChange={(e) => setRegistrationAcademicYear(e.target.value)}
+                          placeholder="e.g., 2026-2027"
+                          className="rounded-xl"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          The academic year students will be registering for
+                        </p>
+                      </div>
+                    </div>
+
+                    <Button 
+                      onClick={handleUpdateRegistrationSettings}
+                      disabled={savingRegistrationSettings}
+                      className="w-full rounded-xl gradient-primary border-0 text-white"
+                    >
+                      {savingRegistrationSettings ? "Saving..." : "Update Registration Settings"}
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                {/* Registration Statistics */}
+                <Card className="border-0 shadow-sm">
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="gradient-accent rounded-xl p-2.5">
+                        <CheckSquare className="h-5 w-5 text-white" />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-foreground">Registration Statistics</p>
+                        <p className="text-xs text-muted-foreground">Current registration status overview</p>
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-3 gap-4 text-center">
+                      <div className="space-y-1">
+                        <p className="text-2xl font-bold text-foreground">--</p>
+                        <p className="text-xs text-muted-foreground">Registered</p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-2xl font-bold text-foreground">--</p>
+                        <p className="text-xs text-muted-foreground">Pending</p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-2xl font-bold text-foreground">--</p>
+                        <p className="text-xs text-muted-foreground">Total Students</p>
+                      </div>
+                    </div>
+                    
+                    <p className="text-xs text-muted-foreground text-center mt-4">
+                      Statistics will be available when registration data is present
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
           </div>
         );
 
@@ -964,6 +1346,196 @@ export default function RegistrarPortal() {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {deleting ? "Deleting..." : "Delete Year"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Bulk Assignment Dialog */}
+      <Dialog open={bulkDialogOpen} onOpenChange={setBulkDialogOpen}>
+        <DialogContent aria-describedby={undefined} className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Bulk Assign Students</DialogTitle>
+            <p className="text-xs text-muted-foreground">
+              Update {selectedStudents.size} selected student(s). Leave fields empty to keep current values.
+            </p>
+          </DialogHeader>
+          
+          {/* Quick Presets */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold">Quick Presets</Label>
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setBulkGrade("9");
+                  setBulkStream("");
+                  setBulkSection("oromo");
+                  setBulkSubSection("A");
+                }}
+                className="rounded-lg text-xs"
+              >
+                Grade 9 - Oromo A
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setBulkGrade("10");
+                  setBulkStream("");
+                  setBulkSection("amharic");
+                  setBulkSubSection("A");
+                }}
+                className="rounded-lg text-xs"
+              >
+                Grade 10 - Amharic A
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setBulkGrade("11");
+                  setBulkStream("natural");
+                  setBulkSection("oromo");
+                  setBulkSubSection("A");
+                }}
+                className="rounded-lg text-xs"
+              >
+                Grade 11 - Natural
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setBulkGrade("12");
+                  setBulkStream("social");
+                  setBulkSection("somali");
+                  setBulkSubSection("A");
+                }}
+                className="rounded-lg text-xs"
+              >
+                Grade 12 - Social
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setBulkGrade("");
+                  setBulkStream("");
+                  setBulkSection("");
+                  setBulkSubSection("");
+                }}
+                className="rounded-lg text-xs col-span-2"
+              >
+                Clear All Fields
+              </Button>
+            </div>
+          </div>
+          
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Grade Level</Label>
+              <Select value={bulkGrade} onValueChange={setBulkGrade}>
+                <SelectTrigger className="rounded-xl">
+                  <SelectValue placeholder="Keep current grade" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Remove Grade</SelectItem>
+                  {[9, 10, 11, 12].map((g) => (
+                    <SelectItem key={g} value={String(g)}>Grade {g}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Stream</Label>
+              <Select value={bulkStream} onValueChange={setBulkStream}>
+                <SelectTrigger className="rounded-xl">
+                  <SelectValue placeholder="Keep current stream" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Remove Stream</SelectItem>
+                  <SelectItem value="natural">Natural</SelectItem>
+                  <SelectItem value="social">Social</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Section</Label>
+              <Select value={bulkSection} onValueChange={setBulkSection}>
+                <SelectTrigger className="rounded-xl">
+                  <SelectValue placeholder="Keep current section" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Remove Section</SelectItem>
+                  <SelectItem value="oromo">Oromo</SelectItem>
+                  <SelectItem value="amharic">Amharic</SelectItem>
+                  <SelectItem value="somali">Somali</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Sub-Section</Label>
+              <Select value={bulkSubSection} onValueChange={setBulkSubSection}>
+                <SelectTrigger className="rounded-xl">
+                  <SelectValue placeholder="Keep current sub-section" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Remove Sub-Section</SelectItem>
+                  {["A", "B", "C", "D", "E", "F", "G", "H"].map((s) => (
+                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          
+          <div className="flex gap-3 mt-4">
+            <DialogClose asChild>
+              <Button variant="outline" className="flex-1 rounded-xl">Cancel</Button>
+            </DialogClose>
+            <Button
+              onClick={handleBulkAssignment}
+              disabled={bulkAssigning}
+              className="flex-1 rounded-xl gradient-primary border-0 text-white"
+            >
+              {bulkAssigning ? "Updating..." : "Update Students"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Assignment Confirmation Dialog */}
+      <AlertDialog open={bulkConfirmOpen} onOpenChange={setBulkConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Bulk Assignment</AlertDialogTitle>
+            <AlertDialogDescription>
+              You are about to update <strong>{selectedStudents.size} students</strong>. This operation cannot be undone. 
+              {(() => {
+                const updates: string[] = [];
+                if (bulkGrade) updates.push(`Grade: ${bulkGrade === "none" ? "Remove" : `Grade ${bulkGrade}`}`);
+                if (bulkStream) updates.push(`Stream: ${bulkStream === "none" ? "Remove" : bulkStream}`);
+                if (bulkSection) updates.push(`Section: ${bulkSection === "none" ? "Remove" : bulkSection}`);
+                if (bulkSubSection) updates.push(`Sub-Section: ${bulkSubSection === "none" ? "Remove" : bulkSubSection}`);
+                return updates.length > 0 ? ` The following will be updated: ${updates.join(", ")}.` : "";
+              })()}
+              <br /><br />
+              Are you sure you want to continue?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={bulkAssigning}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={performBulkAssignment}
+              disabled={bulkAssigning}
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              {bulkAssigning ? "Updating..." : "Update Students"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

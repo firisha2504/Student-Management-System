@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { CheckCircle, XCircle, Trash2, Eye, Mail, Phone, GraduationCap, Briefcase } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -35,6 +36,7 @@ export default function TeacherRequests({ onUserCreated }: Props) {
   const [viewingRequest, setViewingRequest] = useState<TeacherRequest | null>(null);
   const [processing, setProcessing] = useState(false);
   const [credentialsDialog, setCredentialsDialog] = useState<{ username: string; password: string; id_number: string } | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
 
   const fetchRequests = async () => {
     setLoading(true);
@@ -88,8 +90,6 @@ export default function TeacherRequests({ onUserCreated }: Props) {
   };
 
   const handleDelete = async (requestId: number) => {
-    if (!confirm('Are you sure you want to delete this request?')) return;
-    
     setProcessing(true);
     try {
       await api.deleteTeacherRequest(requestId);
@@ -100,6 +100,7 @@ export default function TeacherRequests({ onUserCreated }: Props) {
       toast({ title: "Error", description: error.message || "Failed to delete request", variant: "destructive" });
     }
     setProcessing(false);
+    setDeleteConfirm(null);
   };
 
   const getStatusBadge = (status: string) => {
@@ -223,7 +224,7 @@ export default function TeacherRequests({ onUserCreated }: Props) {
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => handleDelete(req.id)}
+                              onClick={() => setDeleteConfirm(req.id)}
                               disabled={processing}
                               className="rounded-lg text-xs text-destructive hover:bg-destructive/10"
                             >
@@ -354,7 +355,7 @@ export default function TeacherRequests({ onUserCreated }: Props) {
               {viewingRequest.status !== 'pending' && (
                 <Button
                   variant="outline"
-                  onClick={() => handleDelete(viewingRequest.id)}
+                  onClick={() => setDeleteConfirm(viewingRequest.id)}
                   disabled={processing}
                   className="w-full rounded-xl text-destructive hover:bg-destructive/10"
                 >
@@ -405,6 +406,28 @@ export default function TeacherRequests({ onUserCreated }: Props) {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deleteConfirm} onOpenChange={() => setDeleteConfirm(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Teacher Request</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this teacher request? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={processing}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={() => deleteConfirm && handleDelete(deleteConfirm)}
+              disabled={processing}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {processing ? "Deleting..." : "Delete Request"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

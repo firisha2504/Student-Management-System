@@ -260,6 +260,155 @@ router.get('/assignments', authenticate, authorize('admin', 'director'), async (
   }
 });
 
+// Admin/Director: Update homeroom assignment
+router.put('/assign/:id', authenticate, authorize('admin', 'director'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { teacher_id, grade_level, section, sub_section, stream, academic_year } = req.body;
+    
+    if (!teacher_id || !grade_level || !academic_year) {
+      return res.status(400).json({ error: 'teacher_id, grade_level, and academic_year are required' });
+    }
+    
+    // Get current assignment details
+    const [currentAssignment] = await pool.query(
+      'SELECT * FROM homeroom_assignments WHERE id = ?',
+      [id]
+    );
+    
+    if (currentAssignment.length === 0) {
+      return res.status(404).json({ error: 'Homeroom assignment not found' });
+    }
+    
+    const current = currentAssignment[0];
+    
+    // Check if teacher exists and has teacher role
+    const [teacher] = await pool.query(
+      `SELECT u.id FROM users u
+       INNER JOIN user_roles ur ON u.id = ur.user_id
+       WHERE u.id = ? AND ur.role = 'teacher'`,
+      [teacher_id]
+    );
+    
+    if (teacher.length === 0) {
+      return res.status(404).json({ error: 'Teacher not found' });
+    }
+    
+    // If changing teacher, check if new teacher is already assigned as homeroom teacher for this academic year
+    if (teacher_id !== current.teacher_id) {
+      const [existingTeacherAssignment] = await pool.query(
+        `SELECT id FROM homeroom_assignments 
+         WHERE teacher_id = ? AND academic_year = ? AND id != ?`,
+        [teacher_id, academic_year, id]
+      );
+      
+      if (existingTeacherAssignment.length > 0) {
+        return res.status(400).json({ 
+          error: 'This teacher is already assigned as homeroom teacher for another class this academic year. One teacher can only be homeroom teacher for one class.' 
+        });
+      }
+    }
+    
+    // Check if this specific class already has a different homeroom teacher
+    let checkQuery = `
+      SELECT id, teacher_id FROM homeroom_assignments 
+      WHERE grade_level = ? AND academic_year = ? AND id != ?
+    `;
+    const checkParams = [grade_level, academic_year, id];
+    
+    if (section) {
+      checkQuery += ' AND section = ?';
+      checkParams.push(section);
+    } else {
+      checkQuery += ' AND section IS NULL';
+    }
+    
+    if (sub_section) {
+      checkQuery += ' AND sub_section = ?';
+      checkParams.push(sub_section);
+    } else {
+      checkQuery += ' AND sub_section IS NULL';
+    }
+    
+    if (stream) {
+      checkQuery += ' AND stream = ?';
+      checkParams.push(stream);
+    } else {
+      checkQuery += ' AND stream IS NULL';
+    }
+    
+    const [existingClassAssignment] = await pool.query(checkQuery, checkParams);
+    
+    if (existingClassAssignment.length > 0) {
+      return res.status(400).json({ 
+        error: 'This class already has a different homeroom teacher assigned. One class can only have one homeroom teacher.' 
+      });
+    }
+    
+    // Remove homeroom_teacher_id from students with old assignment
+    let removeQuery = `
+      UPDATE student_profiles 
+      SET homeroom_teacher_id = NULL
+      WHERE homeroom_teacher_id = ? AND grade_level = ?
+    `;
+    const removeParams = [current.teacher_id, current.grade_level];
+    
+    if (current.section) {
+      removeQuery += ' AND section = ?';
+      removeParams.push(current.section);
+    }
+    if (current.sub_section) {
+      removeQuery += ' AND sub_section = ?';
+      removeParams.push(current.sub_section);
+    }
+    if (current.stream) {
+      removeQuery += ' AND stream = ?';
+      removeParams.push(current.stream);
+    }
+    
+    await pool.query(removeQuery, removeParams);
+    
+    // Update homeroom assignment
+    await pool.query(
+      `UPDATE homeroom_assignments 
+       SET teacher_id = ?, grade_level = ?, section = ?, sub_section = ?, stream = ?, academic_year = ?
+       WHERE id = ?`,
+      [teacher_id, grade_level, section || null, sub_section || null, stream || null, academic_year, id]
+    );
+    
+    // Update student_profiles to set new homeroom_teacher_id
+    let updateQuery = `
+      UPDATE student_profiles 
+      SET homeroom_teacher_id = ?
+      WHERE grade_level = ?
+    `;
+    const params = [teacher_id, grade_level];
+    
+    if (section) {
+      updateQuery += ' AND section = ?';
+      params.push(section);
+    }
+    if (sub_section) {
+      updateQuery += ' AND sub_section = ?';
+      params.push(sub_section);
+    }
+    if (stream) {
+      updateQuery += ' AND stream = ?';
+      params.push(stream);
+    }
+    
+    const [updateResult] = await pool.query(updateQuery, params);
+    
+    res.json({ 
+      message: 'Homeroom assignment updated successfully',
+      studentsAssigned: updateResult.affectedRows
+    });
+  } catch (error) {
+    console.error('Update homeroom assignment error:', error);
+    res.status(500).json({ error: 'Failed to update homeroom assignment' });
+  }
+});
+
 // Admin/Director: Remove homeroom assignment
 router.delete('/assign/:id', authenticate, authorize('admin', 'director'), async (req, res) => {
   try {

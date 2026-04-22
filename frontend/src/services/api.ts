@@ -601,6 +601,13 @@ export const api = {
     });
   },
 
+  async updateHomeroomAssignment(id: number, data: { teacher_id: number; grade_level: number; section?: string; sub_section?: string; stream?: string; academic_year: string }) {
+    return apiRequest(`/homeroom/assign/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
   async getHomeroomAssignments(filters?: { academic_year?: string }) {
     const params = new URLSearchParams();
     if (filters?.academic_year) params.append('academic_year', filters.academic_year);
