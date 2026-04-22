@@ -355,6 +355,13 @@ export const api = {
     });
   },
 
+  async approveAllRankings(data: { term: string; academic_year: string }) {
+    return apiRequest('/rankings/approve-all', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
   async unpublishRankings(data: { grade_level: number; stream?: string; term: string; academic_year: string }) {
     return apiRequest('/rankings/approve', {
       method: 'DELETE',

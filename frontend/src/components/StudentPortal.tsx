@@ -48,6 +48,7 @@ export default function StudentPortal() {
   const [loading, setLoading] = useState(true);
   const [openSubjects, setOpenSubjects] = useState<Set<number>>(new Set());
   const [collapsedTeachers, setCollapsedTeachers] = useState<Set<string>>(new Set());
+  const [rankingsApproved, setRankingsApproved] = useState(false);
 
   useEffect(() => {
     // Wait for auth to finish loading
@@ -138,6 +139,17 @@ export default function StudentPortal() {
 
         const breakdownsData = await Promise.all(breakdownPromises);
         setBreakdowns(breakdownsData);
+
+        // Check if rankings are approved for this student's grade
+        try {
+          const approvalStatus = await api.getRankingApprovalStatus({
+            grade_level: gradeLevel,
+            stream: profile.stream || undefined,
+          });
+          setRankingsApproved(approvalStatus.approved);
+        } catch {
+          setRankingsApproved(false);
+        }
       } catch (error) {
         console.error("Error fetching student portal data:", error);
       } finally {
@@ -210,7 +222,7 @@ export default function StudentPortal() {
             </div>
             <span className="text-sm font-bold">{gradedCount}/{subjects.length} graded</span>
           </div>
-          {overallAverage !== null && (
+          {rankingsApproved && overallAverage !== null && (
             <div className="mt-3 flex items-center gap-2">
               <span className="text-white/70 text-sm">Overall Average:</span>
               <span
@@ -245,8 +257,10 @@ export default function StudentPortal() {
                   <TableHead className="font-semibold w-[40px]"></TableHead>
                   <TableHead className="font-semibold">Teacher</TableHead>
                   <TableHead className="font-semibold">Subject</TableHead>
-                  <TableHead className="font-semibold">Grade</TableHead>
-                  <TableHead className="font-semibold">Stream</TableHead>
+                  <TableHead className="font-semibold">Grade Level</TableHead>
+                  {(profile?.grade_level ?? 0) >= 11 && (
+                    <TableHead className="font-semibold">Stream</TableHead>
+                  )}
                   <TableHead className="font-semibold text-center w-[80px]">Action</TableHead>
                 </TableRow>
               </TableHeader>
@@ -306,9 +320,11 @@ export default function StudentPortal() {
                                 ) : null}
                                 <TableCell className="text-sm">{s.subject_name}</TableCell>
                                 <TableCell className="text-sm">Grade {s.grade_level}</TableCell>
-                                <TableCell className="text-sm">
-                                  {s.stream ? s.stream.charAt(0).toUpperCase() + s.stream.slice(1) : "—"}
-                                </TableCell>
+                                {(profile?.grade_level ?? 0) >= 11 && (
+                                  <TableCell className="text-sm">
+                                    {s.stream ? s.stream.charAt(0).toUpperCase() + s.stream.slice(1) : "—"}
+                                  </TableCell>
+                                )}
                                 <TableCell className="text-center">
                                   {hasAssessments ? (
                                     <CollapsibleTrigger asChild>
@@ -330,7 +346,7 @@ export default function StudentPortal() {
                               </TableRow>
                               <CollapsibleContent asChild>
                                 <tr>
-                                  <td colSpan={6} className="p-0">
+                                  <td colSpan={(profile?.grade_level ?? 0) >= 11 ? 6 : 5} className="p-0">
                                     {bd.assessments.length > 0 && (
                                       <div className="mx-4 my-3 rounded-xl border border-border/60 bg-card/80 backdrop-blur-sm overflow-hidden shadow-sm">
                                         <div className="grid grid-cols-3 gap-0 text-xs font-semibold text-muted-foreground uppercase tracking-wider px-4 py-2.5 bg-muted/40 border-b border-border/40">

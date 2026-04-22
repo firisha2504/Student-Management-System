@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { api } from "@/services/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Trophy, Eye, EyeOff } from "lucide-react";
+import { Trophy, Eye, EyeOff, CheckCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface RankingEntry {
@@ -28,8 +28,18 @@ export default function RankingApproval() {
   const [approved, setApproved] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [bulkApproving, setBulkApproving] = useState(false);
+  const [term, setTerm] = useState("Semester 1");
+  const [academicYear, setAcademicYear] = useState("");
 
   const needsStream = gradeLevel === "11" || gradeLevel === "12";
+
+  // Load current academic year and term from system settings
+  useEffect(() => {
+    api.getCurrentAcademicYear().then(data => {
+      if (data?.academic_year) setAcademicYear(data.academic_year);
+      if (data?.term) setTerm(data.term);
+    }).catch(() => {});
+  }, []);
 
   const fetchRankings = async () => {
     if (needsStream && !stream) {
@@ -73,8 +83,8 @@ export default function RankingApproval() {
         await api.unpublishRankings({
           grade_level: parseInt(gradeLevel),
           stream: stream || undefined,
-          term: 'Term 1',
-          academic_year: '2024-2025'
+          term,
+          academic_year: academicYear
         });
         setApproved(false);
         toast({ title: "Success", description: "Rankings unpublished. Students can no longer see their ranks." });
@@ -82,8 +92,8 @@ export default function RankingApproval() {
         await api.approveRankings({
           grade_level: parseInt(gradeLevel),
           stream: stream || undefined,
-          term: 'Term 1',
-          academic_year: '2024-2025'
+          term,
+          academic_year: academicYear
         });
         setApproved(true);
         toast({ title: "Success", description: "Rankings published! Students can now see their ranks." });
@@ -92,6 +102,28 @@ export default function RankingApproval() {
       toast({ title: "Error", description: error.message || "Failed to update rankings", variant: "destructive" });
     }
     setPublishing(false);
+  };
+
+  const approveAll = async () => {
+    setBulkApproving(true);
+    try {
+      const data = await api.approveAllRankings({ term, academic_year: academicYear });
+      toast({
+        title: "All Rankings Published",
+        description: `Approved: ${data.approvedCount} grade group(s). Already approved: ${data.skippedCount}.`,
+      });
+      // Refresh current view if rankings are loaded
+      if (rankings.length > 0) {
+        const statusData = await api.getRankingApprovalStatus({
+          grade_level: parseInt(gradeLevel),
+          stream: stream || undefined
+        });
+        setApproved(statusData.approved);
+      }
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to bulk approve rankings", variant: "destructive" });
+    }
+    setBulkApproving(false);
   };
 
   return (
@@ -109,6 +141,28 @@ export default function RankingApproval() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Bulk Approve All */}
+          <div className="flex items-center justify-between p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+            <div>
+              <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">Publish All Grade Rankings</p>
+              <p className="text-xs text-muted-foreground">Approve rankings for all grade levels at once for {term} · {academicYear}</p>
+            </div>
+            <Button
+              onClick={approveAll}
+              disabled={bulkApproving || !academicYear}
+              className="rounded-xl gradient-accent border-0 text-white text-xs shrink-0"
+            >
+              <CheckCheck className="h-3.5 w-3.5 mr-1.5" />
+              {bulkApproving ? "Approving..." : "Approve All Grades"}
+            </Button>
+          </div>
+
+          <div className="relative flex items-center gap-2">
+            <div className="flex-1 border-t border-border/50" />
+            <span className="text-xs text-muted-foreground px-2">or approve by grade</span>
+            <div className="flex-1 border-t border-border/50" />
+          </div>
+
           <div className="grid grid-cols-3 gap-3">
             <Select value={gradeLevel} onValueChange={(v) => { setGradeLevel(v); setStream(""); setRankings([]); }}>
               <SelectTrigger className="rounded-xl">

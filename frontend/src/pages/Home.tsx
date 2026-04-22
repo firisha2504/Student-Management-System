@@ -166,8 +166,10 @@ export default function Home() {
                 <BarChart3 className="h-5 w-5 text-white" />
               </div>
               <div>
-                <p className="text-xs font-medium text-muted-foreground uppercase">Grades</p>
-                <p className="text-2xl font-extrabold text-foreground">{stats.totalGrades}</p>
+                <p className="text-xs font-medium text-muted-foreground uppercase">Grade Level</p>
+                <p className="text-2xl font-extrabold text-foreground">
+                  {profile?.grade_level ? `Grade ${profile.grade_level}` : "—"}
+                </p>
               </div>
             </CardContent>
           </Card>
