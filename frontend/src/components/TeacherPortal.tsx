@@ -584,30 +584,32 @@ export default function TeacherPortal() {
         </Collapsible>
       )}
 
-      {/* Score Tabs */}
+      {/* Score Tabs - Moved outside card */}
       {(selectedSubjectId && selectedGrade && assessmentTypes.length > 0) || scoreTab === "view" ? (
-        <Card className="border-0 shadow-sm">
-          <CardContent className="p-0">
-            {/* Tab bar */}
-            <div className="flex border-b border-border/50">
-              {([["scores", "Enter / Edit Scores", Upload], ["view", "View Uploaded", Eye]] as const).map(([id, label, Icon]) => (
-                <button key={id} onClick={() => setScoreTab(id as ScoreTab)}
-                  className={cn("flex items-center gap-2 px-5 py-3 text-sm font-medium transition-colors border-b-2 -mb-px",
-                    scoreTab === id ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground")}>
-                  <Icon className="h-4 w-4" />{label}
-                </button>
-              ))}
-            </div>
+        <>
+          {/* Tab bar outside card */}
+          <div className="flex gap-2 mb-4">
+            {([["scores", "Enter / Edit Scores", Upload], ["view", "View Uploaded", Eye]] as const).map(([id, label, Icon]) => (
+              <button key={id} onClick={() => setScoreTab(id as ScoreTab)}
+                className={cn("flex items-center gap-2 px-5 py-3 text-sm font-medium transition-colors rounded-xl",
+                  scoreTab === id ? "gradient-primary text-white shadow-md" : "bg-card text-muted-foreground hover:bg-muted/50 hover:text-foreground border border-border/50")}>
+                <Icon className="h-4 w-4" />{label}
+              </button>
+            ))}
+          </div>
 
-            {/* Enter scores */}
-            {scoreTab === "scores" && (
-              <div className="p-4 space-y-3">
-                {loadingStudents ? <p className="text-center text-muted-foreground py-6">Loading students...</p> : students.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-6">No students found for this selection.</p>
-                ) : (
-                  <>
-                    <div className="overflow-x-auto">
-                      <Table>
+          {/* Content card */}
+          <Card className="border-0 shadow-sm">
+            <CardContent className="p-4">
+              {/* Enter scores */}
+              {scoreTab === "scores" && (
+                <div className="space-y-3">
+                  {loadingStudents ? <p className="text-center text-muted-foreground py-6">Loading students...</p> : students.length === 0 ? (
+                    <p className="text-center text-muted-foreground py-6">No students found for this selection.</p>
+                  ) : (
+                    <>
+                      <div className="overflow-x-auto">
+                        <Table>
                         <TableHeader>
                           <TableRow className="bg-muted/20">
                             <TableHead className="min-w-[180px]">Student</TableHead>
@@ -752,8 +754,9 @@ export default function TeacherPortal() {
                 })()}
               </div>
             )}
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </>
       ) : null}
 
       {selectedSubjectId && selectedGrade && assessmentTypes.length === 0 && (

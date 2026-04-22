@@ -39,18 +39,39 @@ router.get('/', authenticate, async (req, res) => {
     
     const [subjects] = await pool.query(query, params);
     
-    // Parse teacher assignments
+    // Parse teacher assignments and group by teacher name
     const formattedSubjects = subjects.map(subject => {
-      const teachers = [];
+      const teacherMap = new Map();
+      
       if (subject.teacher_assignments) {
         const assignments = subject.teacher_assignments.split(';;');
         assignments.forEach(assignment => {
           const [name, grade, stream] = assignment.split('|');
           if (name) {
-            teachers.push({ name, grade_level: parseInt(grade), stream });
+            if (!teacherMap.has(name)) {
+              teacherMap.set(name, {
+                name,
+                grades: [],
+                streams: []
+              });
+            }
+            const teacher = teacherMap.get(name);
+            if (!teacher.grades.includes(parseInt(grade))) {
+              teacher.grades.push(parseInt(grade));
+            }
+            if (stream && stream !== 'Common' && !teacher.streams.includes(stream)) {
+              teacher.streams.push(stream);
+            }
           }
         });
       }
+      
+      // Convert map to array and format grade levels
+      const teachers = Array.from(teacherMap.values()).map(t => ({
+        name: t.name,
+        grade_levels: t.grades.sort((a, b) => a - b).join(', '),
+        streams: t.streams.join(', ') || null
+      }));
       
       return {
         ...subject,

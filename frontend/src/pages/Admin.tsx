@@ -1297,7 +1297,8 @@ export default function Admin() {
                                   <div className="space-y-1">
                                     {subject.teachers.map((t: any, idx: number) => (
                                       <div key={idx} className="text-xs">
-                                        {t.name} <span className="text-muted-foreground">(G{t.grade_level})</span>
+                                        <span className="font-medium">{t.name}</span>
+                                        <span className="text-muted-foreground ml-1">(Grade {t.grade_levels})</span>
                                       </div>
                                     ))}
                                   </div>
