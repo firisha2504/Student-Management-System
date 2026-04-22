@@ -182,7 +182,11 @@ export default function DirectorPortal() {
       setTeachers(withAssignments.map((t: any) => ({
         ...t,
         // Deduplicate subject IDs (same subject can appear for multiple grades)
-        assignedSubjects: [...new Set(t._subjectIds as number[])].map((id: number) => subjectMap[id]).filter(Boolean),
+        assignedSubjects: [...new Set(
+          [...new Set(t._subjectIds as number[])]
+            .map((id: number) => subjectMap[id])
+            .filter(Boolean)
+        )],
       })));
     } catch (error: any) {
       console.error('Failed to fetch teachers:', error);
@@ -251,8 +255,10 @@ export default function DirectorPortal() {
   const fetchHomeroomAssignments = async () => {
     setLoadingHomeroom(true);
     try {
-      const currentYear = new Date().getFullYear();
-      const data = await api.getHomeroomAssignments({ academic_year: `${currentYear}-${currentYear + 1}` });
+      // Get current academic year from system settings instead of calculating
+      const yearData = await api.getCurrentAcademicYear();
+      const currentAcademicYear = yearData?.academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
+      const data = await api.getHomeroomAssignments({ academic_year: currentAcademicYear });
       setHomeroomAssignments(data || []);
     } catch (err: any) {
       toast({ title: "Error", description: err.message || "Failed to fetch homeroom assignments", variant: "destructive" });

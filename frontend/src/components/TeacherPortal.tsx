@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import {
   Upload, CheckCircle2, Plus, Trash2, AlertCircle,
@@ -54,6 +55,7 @@ export default function TeacherPortal() {
   const [assessmentTypes, setAssessmentTypes] = useState<AssessmentType[]>([]);
   const [newAssessmentName, setNewAssessmentName] = useState("");
   const [newAssessmentWeight, setNewAssessmentWeight] = useState<number>(20);
+  const [applyToAllSubjects, setApplyToAllSubjects] = useState(false);
   const [editingAssessmentId, setEditingAssessmentId] = useState<number | null>(null);
   const [editingAssessmentName, setEditingAssessmentName] = useState("");
 
@@ -244,14 +246,53 @@ export default function TeacherPortal() {
     }
     
     try {
-      const filters: any = { subject_id: selectedSubjectId, grade_level: selectedGrade, assessment_name: name, weight };
-      if (selectedSection) filters.section = selectedSection;
-      if (selectedSubSection) filters.sub_section = selectedSubSection;
-      await api.createAssessmentType(filters);
-      const data = await api.getAssessmentTypes({ subject_id: selectedSubjectId, grade_level: selectedGrade });
-      setAssessmentTypes(data || []);
+      if (applyToAllSubjects && assignments.length > 0) {
+        // Bulk create for all teacher's subjects
+        let successCount = 0;
+        let failCount = 0;
+        
+        for (const assignment of assignments) {
+          try {
+            const filters: any = { 
+              subject_id: assignment.subject_id, 
+              grade_level: assignment.grade_level, 
+              assessment_name: name, 
+              weight 
+            };
+            if (assignment.section) filters.section = assignment.section;
+            if (assignment.sub_section) filters.sub_section = assignment.sub_section;
+            if (assignment.stream) filters.stream = assignment.stream;
+            
+            await api.createAssessmentType(filters);
+            successCount++;
+          } catch (e: any) {
+            console.error(`Failed to create assessment for subject ${assignment.subject_id}:`, e);
+            failCount++;
+          }
+        }
+        
+        toast({ 
+          title: "Bulk Assessment Created", 
+          description: `Created "${name}" for ${successCount} subject(s)${failCount > 0 ? `. Failed for ${failCount} subject(s)` : ''}`,
+        });
+        
+        // Refresh current subject's assessments
+        const data = await api.getAssessmentTypes({ subject_id: selectedSubjectId, grade_level: selectedGrade });
+        setAssessmentTypes(data || []);
+      } else {
+        // Single subject creation
+        const filters: any = { subject_id: selectedSubjectId, grade_level: selectedGrade, assessment_name: name, weight };
+        if (selectedSection) filters.section = selectedSection;
+        if (selectedSubSection) filters.sub_section = selectedSubSection;
+        await api.createAssessmentType(filters);
+        const data = await api.getAssessmentTypes({ subject_id: selectedSubjectId, grade_level: selectedGrade });
+        setAssessmentTypes(data || []);
+        toast({ title: "Success", description: `Assessment "${name}" created successfully` });
+      }
+      
       setNewAssessmentName("");
       setNewAssessmentWeight(20);
+      setApplyToAllSubjects(false);
     } catch (e: any) {
       toast({ title: "Error", description: e.message || "Failed to add assessment", variant: "destructive" });
     }
@@ -473,7 +514,24 @@ export default function TeacherPortal() {
                 )}
 
                 {/* Add custom */}
-                <div className="space-y-2">
+                <div className="space-y-3">
+                  {assignments.length > 1 && (
+                    <div className="flex items-center gap-2 p-2 rounded-lg bg-blue-50 dark:bg-blue-950/20">
+                      <Checkbox 
+                        id="apply-all-subjects"
+                        checked={applyToAllSubjects}
+                        onCheckedChange={(checked) => setApplyToAllSubjects(checked === true)}
+                        className="rounded-md"
+                      />
+                      <Label htmlFor="apply-all-subjects" className="text-xs cursor-pointer flex-1">
+                        Apply this assessment to all my subjects ({assignments.length} subjects)
+                      </Label>
+                      <Badge variant="secondary" className="text-xs">
+                        Bulk Create
+                      </Badge>
+                    </div>
+                  )}
+                  
                   <div className="flex gap-2 items-end">
                     <div className="flex-1 space-y-1">
                       <Label className="text-xs text-muted-foreground">Name</Label>
@@ -593,75 +651,93 @@ export default function TeacherPortal() {
                 {savedScores.length === 0 ? (
                   <p className="text-center text-muted-foreground py-6">No scores uploaded yet.</p>
                 ) : (() => {
-                  // Group by subject_name → student_id
-                  const bySubject = savedScores.reduce<Record<string, Record<number, { full_name: string; username: string; admission_number?: string; scores: typeof savedScores }>>>((acc, sc) => {
+                  // Group by student_id → subject_name
+                  const byStudent = savedScores.reduce<Record<number, { full_name: string; username: string; admission_number?: string; subjects: Record<string, number> }>>((acc, sc) => {
                     const subj = (sc as any).subject_name ?? "Unknown Subject";
-                    if (!acc[subj]) acc[subj] = {};
-                    if (!acc[subj][sc.student_id]) acc[subj][sc.student_id] = { full_name: sc.full_name, username: sc.username, admission_number: (sc as any).admission_number, scores: [] };
-                    acc[subj][sc.student_id].scores.push(sc);
+                    if (!acc[sc.student_id]) {
+                      acc[sc.student_id] = { 
+                        full_name: sc.full_name, 
+                        username: sc.username, 
+                        admission_number: (sc as any).admission_number,
+                        subjects: {} 
+                      };
+                    }
+                    // Sum all assessment scores for this subject
+                    if (!acc[sc.student_id].subjects[subj]) {
+                      acc[sc.student_id].subjects[subj] = 0;
+                    }
+                    acc[sc.student_id].subjects[subj] += Number(sc.score);
                     return acc;
                   }, {});
 
-                  return Object.entries(bySubject).map(([subjectName, studentMap]) => (
-                    <div key={subjectName} className="rounded-xl border border-border/50 overflow-hidden">
-                      {/* Subject header — collapsible */}
-                      <button
-                        onClick={() => toggleSubject(subjectName)}
-                        className="w-full flex items-center gap-2 px-4 py-2.5 bg-primary/10 border-b border-border/50 hover:bg-primary/15 transition-colors"
-                      >
-                        <BookOpen className="h-4 w-4 text-primary shrink-0" />
-                        <span className="font-bold text-sm text-primary flex-1 text-left">{subjectName}</span>
-                        <Badge variant="outline" className="text-xs">{Object.keys(studentMap).length} students</Badge>
-                        {expandedSubjects.has(subjectName)
-                          ? <ChevronUp className="h-4 w-4 text-primary shrink-0" />
-                          : <ChevronDown className="h-4 w-4 text-primary shrink-0" />}
-                      </button>
+                  // Get all unique subjects
+                  const allSubjects = [...new Set(savedScores.map(sc => (sc as any).subject_name ?? "Unknown Subject"))].sort();
 
-                      {/* Students — only shown when expanded */}
-                      {expandedSubjects.has(subjectName) && Object.entries(studentMap).map(([studentId, { full_name, username, admission_number, scores: studentScores }]) => {
-                        // Scores are already weighted (out of the weight), so just sum them
-                        const total = studentScores.reduce((sum, sc) => sum + Number(sc.score), 0);
+                  // Convert to array for sorting
+                  const studentsArray = Object.entries(byStudent).map(([studentId, data]) => ({
+                    studentId: Number(studentId),
+                    ...data
+                  }));
 
-                        return (
-                          <div key={studentId} className="border-b border-border/30 last:border-0">
-                            {/* Student row header */}
-                            <div className="flex items-center justify-between px-4 py-2 bg-muted/20">
-                              <div>
-                                <span className="font-semibold text-sm">{full_name}</span>
-                                <span className="text-xs text-muted-foreground font-mono ml-2">{admission_number ?? username}</span>
-                              </div>
-                              <Badge className={cn("text-xs", total >= 50 ? "gradient-accent border-0 text-white" : "bg-destructive text-destructive-foreground")}>
-                                {total.toFixed(1)}%
-                              </Badge>
-                            </div>
-                            {/* Assessment scores */}
-                            <div className="divide-y divide-border/20">
-                              {studentScores.map(sc => (
-                                <div key={sc.id} className="flex items-center justify-between px-6 py-2 hover:bg-muted/10 transition-colors">
-                                  <span className="text-sm text-muted-foreground">{(sc as any).assessment_name ?? "—"}</span>
-                                  <div className="flex items-center gap-2">
-                                    {editingScoreId === sc.id ? (
-                                      <>
-                                        <Input type="number" min={0} max={100} value={editingScoreValue} onChange={e => setEditingScoreValue(e.target.value)} className="h-7 w-20 rounded-lg text-sm" />
-                                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => saveEditedScore(sc.id)}><Save className="h-3.5 w-3.5 text-emerald-500" /></Button>
-                                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setEditingScoreId(null)}><X className="h-3.5 w-3.5" /></Button>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <Badge variant="outline" className="text-xs font-mono">{Number(sc.score).toFixed(1)}</Badge>
-                                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => { setEditingScoreId(sc.id); setEditingScoreValue(String(sc.score)); }}><Pencil className="h-3 w-3" /></Button>
-                                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={() => deleteScore(sc.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
-                                      </>
-                                    )}
+                  return (
+                    <div className="rounded-xl border border-border/50 overflow-hidden">
+                      <div className="overflow-x-auto">
+                        <Table>
+                          <TableHeader>
+                            <TableRow className="bg-primary/10">
+                              <TableHead className="min-w-[50px] text-center font-bold">#</TableHead>
+                              <TableHead className="min-w-[200px] font-bold">Student Name</TableHead>
+                              <TableHead className="min-w-[120px] font-bold">ID Number</TableHead>
+                              {allSubjects.map(subject => (
+                                <TableHead key={subject} className="min-w-[120px] text-center font-bold">
+                                  <div className="flex items-center justify-center gap-1">
+                                    <BookOpen className="h-3.5 w-3.5 text-primary" />
+                                    {subject}
                                   </div>
-                                </div>
+                                </TableHead>
                               ))}
-                            </div>
-                          </div>
-                        );
-                      })}
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {studentsArray.map((student, index) => (
+                              <TableRow key={student.studentId} className="hover:bg-muted/30 transition-colors">
+                                <TableCell className="text-center font-semibold text-muted-foreground">
+                                  {index + 1}
+                                </TableCell>
+                                <TableCell className="font-semibold">
+                                  {student.full_name}
+                                </TableCell>
+                                <TableCell className="font-mono text-sm text-muted-foreground">
+                                  {student.admission_number ?? student.username}
+                                </TableCell>
+                                {allSubjects.map(subject => {
+                                  const score = student.subjects[subject];
+                                  return (
+                                    <TableCell key={subject} className="text-center">
+                                      {score !== undefined ? (
+                                        <Badge 
+                                          className={cn(
+                                            "text-sm font-bold",
+                                            score >= 50 
+                                              ? "gradient-accent border-0 text-white" 
+                                              : "bg-destructive text-destructive-foreground"
+                                          )}
+                                        >
+                                          {score.toFixed(1)}
+                                        </Badge>
+                                      ) : (
+                                        <span className="text-xs text-muted-foreground">—</span>
+                                      )}
+                                    </TableCell>
+                                  );
+                                })}
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
                     </div>
-                  ));
+                  );
                 })()}
               </div>
             )}

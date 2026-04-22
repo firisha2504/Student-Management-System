@@ -140,12 +140,14 @@ export default function RegistrarPortal() {
   }, []);
 
   const handleSaveSettings = async () => {
-    if (!settingYear || !/^\d{4}\/\d{4}$/.test(settingYear)) {
-      toast({ title: "Error", description: "Enter a valid year (e.g., 2025/2026)", variant: "destructive" }); return;
+    // Trim the year to remove extra spaces
+    const trimmedYear = settingYear.trim();
+    if (!trimmedYear || !/^\d{4}[\/\-]\d{4}(\s*E\.C\.?)?$/i.test(trimmedYear)) {
+      toast({ title: "Error", description: "Enter a valid year (e.g., 2025/2026 or 2018-2019 E.C.)", variant: "destructive" }); return;
     }
     setSavingSettings(true);
     try {
-      const formatted = settingYear.replace('/', '-');
+      const formatted = trimmedYear.replace('/', '-');
       await api.setCurrentAcademicYear({ academic_year: formatted, term: settingTerm || undefined });
       setCurrentAcademicYear(formatted);
       setCurrentTerm(settingTerm || null);
@@ -160,8 +162,8 @@ export default function RegistrarPortal() {
     setArchiving(true);
     setArchiveConfirmOpen(false);
     try {
-      // Convert format from 2025/2026 to 2025-2026
-      const formattedYear = archiveYear.replace('/', '-');
+      // Convert format from 2025/2026 to 2025-2026, trim extra spaces
+      const formattedYear = archiveYear.trim().replace('/', '-');
       const result = await api.archiveAcademicYear(formattedYear);
       toast({ 
         title: "Success", 
@@ -1439,8 +1441,8 @@ export default function RegistrarPortal() {
                   <div className="space-y-1">
                     <Label className="text-xs">Academic Year</Label>
                     <SimpleAcademicYearSelect
-                      value={settingYear.replace('/', '-')}
-                      onValueChange={(value) => setSettingYear(value.replace('-', '/'))}
+                      value={settingYear.replace(/\//g, '-')}
+                      onValueChange={(value) => setSettingYear(value.replace(/-/g, '/'))}
                       placeholder="Select academic year"
                       className="h-10 rounded-xl"
                     />
@@ -1478,7 +1480,8 @@ export default function RegistrarPortal() {
                 </div>
                 <Button
                   onClick={() => {
-                    if (!archiveYear || !/^\d{4}[\/\-]\d{4}$/.test(archiveYear)) { toast({ title: "Error", description: "Please select a valid academic year", variant: "destructive" }); return; }
+                    const trimmedYear = archiveYear.trim();
+                    if (!trimmedYear || !/^\d{4}[\/\-]\d{4}(\s*E\.C\.?)?$/i.test(trimmedYear)) { toast({ title: "Error", description: "Please enter a valid academic year (e.g., 2025-2026 or 2018-2019 E.C.)", variant: "destructive" }); return; }
                     setArchiveConfirmOpen(true);
                   }}
                   disabled={archiving}
