@@ -1,6 +1,7 @@
 import { ReactNode, useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useTheme } from "@/hooks/useTheme";
+import { useSchoolInfo } from "@/contexts/SchoolConfigContext";
 import { Button } from "@/components/ui/button";
 import { NavLink } from "@/components/NavLink";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -10,6 +11,7 @@ import { api, getAssetUrl } from "@/services/api";
 export default function AppLayout({ children }: { children: ReactNode }) {
   const { profile, role, signOut } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const schoolInfo = useSchoolInfo();
   const [schoolLogo, setSchoolLogo] = useState<string | null>(null);
 
   useEffect(() => {
@@ -44,7 +46,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 <GraduationCap className="h-5 w-5 text-white" />
               </div>
             )}
-            <span className="font-extrabold text-lg tracking-tight text-foreground">Melka Jebdu</span>
+            <span className="font-extrabold text-lg tracking-tight text-foreground">{schoolInfo.name}</span>
           </div>
 
           <nav className="flex items-center gap-0.5">

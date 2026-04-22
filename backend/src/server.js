@@ -17,6 +17,7 @@ import academicYearRoutes from './routes/academic-year.js';
 import parentsRoutes from './routes/parents.js';
 import teacherRequestsRoutes from './routes/teacher-requests.js';
 import homeroomRoutes from './routes/homeroom.js';
+import configRoutes from './routes/config.js';
 
 dotenv.config();
 
@@ -57,6 +58,7 @@ app.use('/api/academic-year', academicYearRoutes);
 app.use('/api/parents', parentsRoutes);
 app.use('/api/teacher-requests', teacherRequestsRoutes);
 app.use('/api/homeroom', homeroomRoutes);
+app.use('/api/config', configRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

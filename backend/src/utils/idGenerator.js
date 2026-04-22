@@ -1,14 +1,6 @@
 import pool from '../config/database.js';
+import { getIdPrefix } from '../config/school.js';
 
-// Role prefix mapping
-const ROLE_PREFIXES = {
-  student: 'MJS',
-  teacher: 'MJT',
-  registrar: 'MJR',
-  director: 'MJD',
-  parent: 'MJP',
-  admin: 'MJA'
-};
 
 /**
  * Generate unique ID for user based on role
@@ -16,7 +8,7 @@ const ROLE_PREFIXES = {
  * @returns {Promise<string>} Generated ID (e.g., MJ001, MJT001)
  */
 export async function generateUserId(role) {
-  const prefix = ROLE_PREFIXES[role];
+  const prefix = getIdPrefix(role);
   
   if (!prefix) {
     throw new Error(`Invalid role: ${role}`);

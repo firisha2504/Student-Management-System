@@ -1,6 +1,6 @@
 // API service for backend communication
-const API_BASE_URL = 'http://localhost:5000/api';
-const BACKEND_URL = 'http://localhost:5000';
+const API_BASE_URL = 'http://localhost:5001/api';
+const BACKEND_URL = 'http://localhost:5001';
 
 // Get auth token from localStorage
 const getAuthToken = () => localStorage.getItem('auth_token');

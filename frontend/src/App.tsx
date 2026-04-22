@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { ThemeProvider } from "@/hooks/useTheme";
+import { SchoolConfigProvider } from "@/contexts/SchoolConfigContext";
 import Login from "./pages/Login";
 import Home from "./pages/Home";
 import Register from "./pages/Register";
@@ -39,26 +40,28 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider>
       <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-          <AuthProvider>
-            <Routes>
-              <Route path="/login" element={<AuthRoute><Login /></AuthRoute>} />
-              <Route path="/teacher-request" element={<TeacherRequest />} />
-              <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
-              <Route path="/register" element={<ProtectedRoute><Register /></ProtectedRoute>} />
-              <Route path="/portal" element={<ProtectedRoute><Portal /></ProtectedRoute>} />
-              <Route path="/student-register" element={<ProtectedRoute><StudentRegister /></ProtectedRoute>} />
-              <Route path="/about" element={<ProtectedRoute><About /></ProtectedRoute>} />
-              <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
-              <Route path="/registrar" element={<ProtectedRoute><RegistrarPortal /></ProtectedRoute>} />
-              <Route path="/director" element={<ProtectedRoute><DirectorPortal /></ProtectedRoute>} />
-              <Route path="/parent" element={<ProtectedRoute><ParentPortal /></ProtectedRoute>} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </AuthProvider>
-        </BrowserRouter>
+        <SchoolConfigProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+            <AuthProvider>
+              <Routes>
+                <Route path="/login" element={<AuthRoute><Login /></AuthRoute>} />
+                <Route path="/teacher-request" element={<TeacherRequest />} />
+                <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
+                <Route path="/register" element={<ProtectedRoute><Register /></ProtectedRoute>} />
+                <Route path="/portal" element={<ProtectedRoute><Portal /></ProtectedRoute>} />
+                <Route path="/student-register" element={<ProtectedRoute><StudentRegister /></ProtectedRoute>} />
+                <Route path="/about" element={<ProtectedRoute><About /></ProtectedRoute>} />
+                <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
+                <Route path="/registrar" element={<ProtectedRoute><RegistrarPortal /></ProtectedRoute>} />
+                <Route path="/director" element={<ProtectedRoute><DirectorPortal /></ProtectedRoute>} />
+                <Route path="/parent" element={<ProtectedRoute><ParentPortal /></ProtectedRoute>} />
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </AuthProvider>
+          </BrowserRouter>
+        </SchoolConfigProvider>
       </TooltipProvider>
     </ThemeProvider>
   </QueryClientProvider>

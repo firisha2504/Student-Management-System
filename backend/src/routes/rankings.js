@@ -1,5 +1,6 @@
 import express from 'express';
 import pool from '../config/database.js';
+import { SCHOOL_CONFIG } from '../config/school.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 
 const router = express.Router();

@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { useGradeLevels, useStreams, useSections, useSubSections, useIdPrefixes, useSchoolConfig } from "@/contexts/SchoolConfigContext";
 import { api } from "@/services/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { UserPlus, Users, Search, Camera, Link2, History, Menu, ChevronLeft, ChevronRight, ClipboardList, CheckSquare, Trash2 } from "lucide-react";
+import { UserPlus, Users, Search, Camera, Link2, History, Menu, ChevronLeft, ChevronRight, ClipboardList, CheckSquare, Trash2, ChevronDown, ChevronUp } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import SuccessModal from "@/components/SuccessModal";
@@ -43,6 +44,12 @@ const sidebarItems: { id: RegistrarSection; label: string; icon: React.ElementTy
 export default function RegistrarPortal() {
   const { role } = useAuth();
   const { toast } = useToast();
+  const gradeLevels = useGradeLevels();
+  const streams = useStreams();
+  const sections = useSections();
+  const subSections = useSubSections();
+  const idPrefixes = useIdPrefixes();
+  const { config } = useSchoolConfig();
   const [students, setStudents] = useState<StudentProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -56,6 +63,15 @@ export default function RegistrarPortal() {
   const [userRows, setUserRows] = useState<{ fullName: string; idNumber: string; gender: string }[]>([{ fullName: "", idNumber: "", gender: "" }]);
   const [nextStudentNum, setNextStudentNum] = useState<number>(1);
   const [creating, setCreating] = useState(false);
+  
+  // Registration settings
+  const [registrationGrade, setRegistrationGrade] = useState<string>("9");
+  const [registrationStream, setRegistrationStream] = useState<string>("");
+  const [registrationSection, setRegistrationSection] = useState<string>("");
+  const [registrationSubSection, setRegistrationSubSection] = useState<string>("");
+  const [autoAssignClass, setAutoAssignClass] = useState<boolean>(true);
+  const [bulkInputOpen, setBulkInputOpen] = useState<boolean>(false);
+  const [bulkNames, setBulkNames] = useState<string>("");
   const [successModal, setSuccessModal] = useState<{ title: string; description?: string; credentials?: { name: string; username: string; password: string }[] } | null>(null);
 
   // Edit student dialog
@@ -95,6 +111,9 @@ export default function RegistrarPortal() {
   const [bulkAssigning, setBulkAssigning] = useState(false);
   const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
   const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
+
+  // Grade collapse state
+  const [collapsedGrades, setCollapsedGrades] = useState<Set<number>>(new Set());
 
   // Current academic year
   const [currentAcademicYear, setCurrentAcademicYear] = useState<string | null>(null);
@@ -316,6 +335,67 @@ export default function RegistrarPortal() {
     const nextNum = nextStudentNum + userRows.length;
     setUserRows([...userRows, { fullName: "", idNumber: String(nextNum).padStart(3, '0'), gender: "" }]);
   };
+
+  const addMultipleRows = (count: number) => {
+    const newRows = [];
+    for (let i = 0; i < count; i++) {
+      const nextNum = nextStudentNum + userRows.length + i;
+      newRows.push({ fullName: "", idNumber: String(nextNum).padStart(3, '0'), gender: "" });
+    }
+    setUserRows([...userRows, ...newRows]);
+  };
+
+  const processBulkNames = () => {
+    const names = bulkNames
+      .split('\n')
+      .map(name => name.trim())
+      .filter(name => name.length > 0);
+    
+    if (names.length === 0) {
+      toast({ title: "Error", description: "Please enter at least one name", variant: "destructive" });
+      return;
+    }
+    
+    const newRows = names.map((name, index) => {
+      const nextNum = nextStudentNum + userRows.length + index;
+      
+      // Check for gender prefix and extract actual name
+      let actualName = name;
+      let detectedGender = "";
+      
+      // Check if name starts with "M " or "F " (case insensitive)
+      const malePrefix = /^M\s+(.+)$/i;
+      const femalePrefix = /^F\s+(.+)$/i;
+      
+      if (malePrefix.test(name)) {
+        actualName = name.replace(malePrefix, '$1').trim();
+        detectedGender = "male";
+      } else if (femalePrefix.test(name)) {
+        actualName = name.replace(femalePrefix, '$1').trim();
+        detectedGender = "female";
+      }
+      
+      return {
+        fullName: actualName,
+        idNumber: String(nextNum).padStart(3, '0'),
+        gender: detectedGender
+      };
+    });
+    
+    setUserRows([...userRows, ...newRows]);
+    setBulkNames("");
+    setBulkInputOpen(false);
+    
+    // Count how many had gender detected
+    const withGender = newRows.filter(row => row.gender).length;
+    const genderInfo = withGender > 0 ? ` (${withGender} with auto-detected gender)` : "";
+    
+    toast({ 
+      title: "Success", 
+      description: `Added ${names.length} students to the registration form${genderInfo}` 
+    });
+  };
+
   const removeUserRow = (i: number) => setUserRows(userRows.filter((_, idx) => idx !== i));
   const updateUserRow = (i: number, field: "fullName" | "idNumber" | "gender", value: string) => {
     const updated = [...userRows]; updated[i][field] = value; setUserRows(updated);
@@ -337,7 +417,7 @@ export default function RegistrarPortal() {
       const timestamp = Date.now();
       const randomSuffix = Math.floor(Math.random() * 100000);
       const nameHash = row.fullName.toLowerCase().replace(/\s+/g, '');
-      const email = `${nameHash}.${timestamp}.${i}.${randomSuffix}@school.com`;
+      const email = `${nameHash}.${timestamp}.${i}.${randomSuffix}@${config.system?.emailDomain || 'school.com'}`;
       
       try {
         const result = await api.createUser({
@@ -346,6 +426,42 @@ export default function RegistrarPortal() {
           role: "student",
           gender: row.gender || undefined
         });
+        
+        // Auto-assign grade level and class if enabled
+        if (autoAssignClass && registrationGrade) {
+          const updateData: any = {
+            grade_level: parseInt(registrationGrade)
+          };
+          
+          // Add stream for grades 11-12
+          if (registrationGrade === "11" || registrationGrade === "12") {
+            if (registrationStream && registrationStream !== "none") {
+              updateData.stream = registrationStream;
+            } else {
+              updateData.stream = null;
+            }
+          }
+          
+          // Add section if specified
+          if (registrationSection && registrationSection !== "none") {
+            updateData.section = registrationSection;
+          } else if (registrationSection === "none") {
+            updateData.section = null;
+          }
+          
+          // Add sub-section if specified
+          if (registrationSubSection && registrationSubSection !== "none") {
+            updateData.sub_section = registrationSubSection;
+          } else if (registrationSubSection === "none") {
+            updateData.sub_section = null;
+          }
+          
+          try {
+            await api.updateStudent(result.user_id, updateData);
+          } catch (updateErr: any) {
+            console.warn(`Failed to auto-assign class for ${row.fullName}:`, updateErr);
+          }
+        }
         
         creds.push({ 
           name: row.fullName.trim(), 
@@ -363,8 +479,9 @@ export default function RegistrarPortal() {
     }
     
     if (creds.length > 0) {
+      const gradeInfo = autoAssignClass && registrationGrade ? ` (Grade ${registrationGrade}${registrationStream ? ` - ${registrationStream}` : ''}${registrationSection ? ` - ${registrationSection}` : ''}${registrationSubSection ? ` - ${registrationSubSection}` : ''})` : '';
       setSuccessModal({ 
-        title: `${creds.length} Student(s) Created!`, 
+        title: `${creds.length} Student(s) Created!${gradeInfo}`, 
         description: "Share these credentials with the students", 
         credentials: creds 
       });
@@ -485,6 +602,19 @@ export default function RegistrarPortal() {
   const needsStream = editGrade === "11" || editGrade === "12";
 
   const handleNavClick = (id: RegistrarSection) => { setActiveSection(id); setMobileSidebarOpen(false); };
+
+  const toggleGradeCollapse = (grade: number | null) => {
+    const gradeKey = grade ?? 0; // Use 0 for null grades consistently
+    setCollapsedGrades(prev => {
+      const next = new Set(prev);
+      if (next.has(gradeKey)) {
+        next.delete(gradeKey);
+      } else {
+        next.add(gradeKey);
+      }
+      return next;
+    });
+  };
 
   const toggleStudentSelection = (userId: string) => {
     setSelectedStudents(prev => {
@@ -624,15 +754,14 @@ export default function RegistrarPortal() {
                 <SelectTrigger className="rounded-xl"><SelectValue placeholder="Grade" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Grades</SelectItem>
-                  {[9,10,11,12].map(g => <SelectItem key={g} value={String(g)}>Grade {g}</SelectItem>)}
+                  {gradeLevels.map(g => <SelectItem key={g} value={String(g)}>Grade {g}</SelectItem>)}
                 </SelectContent>
               </Select>
               <Select value={filterStream} onValueChange={setFilterStream}>
                 <SelectTrigger className="rounded-xl"><SelectValue placeholder="Stream" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Streams</SelectItem>
-                  <SelectItem value="natural">Natural</SelectItem>
-                  <SelectItem value="social">Social</SelectItem>
+                  {streams.map(s => <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -642,9 +771,30 @@ export default function RegistrarPortal() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-semibold text-foreground">Quick Selection</h3>
-                  <Badge variant="outline" className="text-xs">
-                    {selectedStudents.size} selected
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="text-xs">
+                      {selectedStudents.size} selected
+                    </Badge>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setCollapsedGrades(new Set())}
+                      className="rounded-lg text-xs h-6 px-2"
+                    >
+                      Expand All
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        const allGrades = new Set(filtered.map(s => s.grade_level ?? 0));
+                        setCollapsedGrades(allGrades);
+                      }}
+                      className="rounded-lg text-xs h-6 px-2"
+                    >
+                      Collapse All
+                    </Button>
+                  </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button
@@ -745,52 +895,85 @@ export default function RegistrarPortal() {
                             // Add grade level header when grade changes
                             if (s.grade_level !== currentGrade) {
                               currentGrade = s.grade_level;
+                              const gradeKey = currentGrade ?? 0; // Use consistent key
+                              const gradeStudentsCount = filtered.filter(student => student.grade_level === currentGrade).length;
+                              const isCollapsed = collapsedGrades.has(gradeKey);
+                              
+                              // Capture the grade value in a closure to avoid stale closure issues
+                              const gradeForClosure = currentGrade;
+                              
                               rows.push(
-                                <TableRow key={`grade-${currentGrade}`} className="bg-muted/50">
-                                  <TableCell colSpan={9} className="font-bold text-primary py-3">
-                                    {currentGrade ? `Grade ${currentGrade}` : 'No Grade Assigned'}
+                                <TableRow key={`grade-${currentGrade}`} className="bg-muted/50 hover:bg-muted/70 cursor-pointer transition-colors">
+                                  <TableCell 
+                                    colSpan={9} 
+                                    className="font-bold text-primary py-3"
+                                    onClick={() => toggleGradeCollapse(gradeForClosure)}
+                                  >
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-2">
+                                        {isCollapsed ? (
+                                          <ChevronRight className="h-4 w-4 transition-transform" />
+                                        ) : (
+                                          <ChevronDown className="h-4 w-4 transition-transform" />
+                                        )}
+                                        <span>
+                                          {gradeForClosure ? `Grade ${gradeForClosure}` : 'No Grade Assigned'}
+                                        </span>
+                                        {isCollapsed && (
+                                          <span className="text-xs text-muted-foreground ml-2">
+                                            (Click to expand)
+                                          </span>
+                                        )}
+                                      </div>
+                                      <Badge variant="outline" className="text-xs">
+                                        {gradeStudentsCount} student{gradeStudentsCount !== 1 ? 's' : ''}
+                                      </Badge>
+                                    </div>
                                   </TableCell>
                                 </TableRow>
                               );
                             }
                             
-                            // Add student row
-                            rows.push(
-                              <TableRow key={s.user_id} className={cn("hover:bg-muted/30", selectedStudents.has(s.user_id) && "bg-primary/5")}>
-                                <TableCell>
-                                  <Checkbox
-                                    checked={selectedStudents.has(s.user_id)}
-                                    onCheckedChange={() => toggleStudentSelection(s.user_id)}
-                                  />
-                                </TableCell>
-                                <TableCell className="font-semibold">{s.full_name}</TableCell>
-                                <TableCell className="font-mono text-sm">{s.id_number}</TableCell>
-                                <TableCell>{s.grade_level || "—"}</TableCell>
-                                <TableCell className="capitalize">{s.stream || "—"}</TableCell>
-                                <TableCell className="capitalize">{s.section || "—"}</TableCell>
-                                <TableCell className="uppercase font-semibold">{s.sub_section || "—"}</TableCell>
-                                <TableCell className="text-sm">
-                                  {s.parent_count > 0
-                                    ? <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-xs">
-                                        Parent ({s.parent_count})
-                                      </Badge>
-                                    : <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30 text-xs">
-                                        No Parent
-                                      </Badge>}
-                                </TableCell>
-                                <TableCell>
-                                  <div className="flex gap-2">
-                                    <Button size="sm" variant="outline" className="rounded-lg text-xs" onClick={() => openEditDialog(s)}>Edit</Button>
-                                    <Button size="sm" variant="outline" className="rounded-lg text-xs" onClick={() => { setImageTargetStudent(s.user_id); fileInputRef.current?.click(); }}>
-                                      <Camera className="h-3 w-3" />
-                                    </Button>
-                                    <Button size="sm" variant="outline" className="rounded-lg text-xs" onClick={() => openLinkDialog(s)}>
-                                      <Link2 className="h-3 w-3" />
-                                    </Button>
-                                  </div>
-                                </TableCell>
-                              </TableRow>
-                            );
+                            // Add student row only if grade is not collapsed
+                            const gradeKey = s.grade_level ?? 0; // Use consistent key
+                            if (!collapsedGrades.has(gradeKey)) {
+                              rows.push(
+                                <TableRow key={s.user_id} className={cn("hover:bg-muted/30", selectedStudents.has(s.user_id) && "bg-primary/5")}>
+                                  <TableCell>
+                                    <Checkbox
+                                      checked={selectedStudents.has(s.user_id)}
+                                      onCheckedChange={() => toggleStudentSelection(s.user_id)}
+                                    />
+                                  </TableCell>
+                                  <TableCell className="font-semibold">{s.full_name}</TableCell>
+                                  <TableCell className="font-mono text-sm">{s.id_number}</TableCell>
+                                  <TableCell>{s.grade_level || "—"}</TableCell>
+                                  <TableCell className="capitalize">{s.stream || "—"}</TableCell>
+                                  <TableCell className="capitalize">{s.section || "—"}</TableCell>
+                                  <TableCell className="uppercase font-semibold">{s.sub_section || "—"}</TableCell>
+                                  <TableCell className="text-sm">
+                                    {s.parent_count > 0
+                                      ? <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-xs">
+                                          Parent ({s.parent_count})
+                                        </Badge>
+                                      : <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30 text-xs">
+                                          No Parent
+                                        </Badge>}
+                                  </TableCell>
+                                  <TableCell>
+                                    <div className="flex gap-2">
+                                      <Button size="sm" variant="outline" className="rounded-lg text-xs" onClick={() => openEditDialog(s)}>Edit</Button>
+                                      <Button size="sm" variant="outline" className="rounded-lg text-xs" onClick={() => { setImageTargetStudent(s.user_id); fileInputRef.current?.click(); }}>
+                                        <Camera className="h-3 w-3" />
+                                      </Button>
+                                      <Button size="sm" variant="outline" className="rounded-lg text-xs" onClick={() => openLinkDialog(s)}>
+                                        <Link2 className="h-3 w-3" />
+                                      </Button>
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            }
                           });
                           
                           if (filtered.length === 0) {
@@ -817,12 +1000,205 @@ export default function RegistrarPortal() {
           <div className="space-y-6 max-w-2xl">
             <div>
               <h2 className="text-xl font-bold text-foreground">Register New Students</h2>
-              <p className="text-sm text-muted-foreground">Bulk create student accounts</p>
+              <p className="text-sm text-muted-foreground">Bulk create student accounts with automatic grade assignment</p>
             </div>
+            
+            {/* Grade Level & Class Assignment Settings */}
+            <Card className="border-0 shadow-sm">
+              <CardContent className="pt-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-semibold">Registration Settings</Label>
+                  <div className="flex items-center gap-2">
+                    <Checkbox 
+                      checked={autoAssignClass} 
+                      onCheckedChange={setAutoAssignClass}
+                      id="auto-assign"
+                    />
+                    <Label htmlFor="auto-assign" className="text-xs cursor-pointer">
+                      Auto-assign grade & class
+                    </Label>
+                  </div>
+                </div>
+                
+                {/* Quick Presets */}
+                <div className="space-y-2">
+                  <Label className="text-xs font-semibold">Quick Presets</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setAutoAssignClass(true);
+                        setRegistrationGrade("9");
+                        setRegistrationStream("");
+                        setRegistrationSection("oromo");
+                        setRegistrationSubSection("A");
+                      }}
+                      className="rounded-lg text-xs h-7"
+                    >
+                      Grade 9 - Oromo A
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setAutoAssignClass(true);
+                        setRegistrationGrade("10");
+                        setRegistrationStream("");
+                        setRegistrationSection("amharic");
+                        setRegistrationSubSection("A");
+                      }}
+                      className="rounded-lg text-xs h-7"
+                    >
+                      Grade 10 - Amharic A
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setAutoAssignClass(true);
+                        setRegistrationGrade("11");
+                        setRegistrationStream("natural");
+                        setRegistrationSection("oromo");
+                        setRegistrationSubSection("A");
+                      }}
+                      className="rounded-lg text-xs h-7"
+                    >
+                      Grade 11 - Natural
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setAutoAssignClass(true);
+                        setRegistrationGrade("12");
+                        setRegistrationStream("social");
+                        setRegistrationSection("somali");
+                        setRegistrationSubSection("A");
+                      }}
+                      className="rounded-lg text-xs h-7"
+                    >
+                      Grade 12 - Social
+                    </Button>
+                  </div>
+                </div>
+                
+                {autoAssignClass && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Grade Level</Label>
+                      <Select value={registrationGrade} onValueChange={setRegistrationGrade}>
+                        <SelectTrigger className="rounded-xl h-8">
+                          <SelectValue placeholder="Select grade" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {gradeLevels.map((g) => (
+                            <SelectItem key={g} value={String(g)}>Grade {g}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    {(registrationGrade === "11" || registrationGrade === "12") && (
+                      <div className="space-y-1">
+                        <Label className="text-xs">Stream</Label>
+                        <Select value={registrationStream} onValueChange={setRegistrationStream}>
+                          <SelectTrigger className="rounded-xl h-8">
+                            <SelectValue placeholder="Select stream" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">No Stream</SelectItem>
+                            {streams.map(s => <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                    
+                    <div className="space-y-1">
+                      <Label className="text-xs">Section (Optional)</Label>
+                      <Select value={registrationSection} onValueChange={setRegistrationSection}>
+                        <SelectTrigger className="rounded-xl h-8">
+                          <SelectValue placeholder="Select section" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">No Section</SelectItem>
+                          {sections.map(s => <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    <div className="space-y-1">
+                      <Label className="text-xs">Sub-Section (Optional)</Label>
+                      <Select value={registrationSubSection} onValueChange={setRegistrationSubSection}>
+                        <SelectTrigger className="rounded-xl h-8">
+                          <SelectValue placeholder="Select sub-section" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">No Sub-Section</SelectItem>
+                          {subSections.map((s) => (
+                            <SelectItem key={s} value={s}>{s}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                )}
+                
+                {autoAssignClass && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                    <p className="text-xs text-blue-700">
+                      <strong>Auto-Assignment:</strong> All students will be registered for{' '}
+                      <strong>Grade {registrationGrade}</strong>
+                      {registrationStream && <span> - {registrationStream}</span>}
+                      {registrationSection && <span> - {registrationSection}</span>}
+                      {registrationSubSection && <span> - {registrationSubSection}</span>}
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+            
             <Card className="border-0 shadow-sm">
               <CardContent className="pt-6 space-y-5">
-                <div className="space-y-3">
+                <div className="flex items-center justify-between">
                   <Label className="text-sm font-semibold">Students</Label>
+                  <div className="flex gap-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => setBulkInputOpen(true)}
+                      className="rounded-lg text-xs h-7"
+                    >
+                      Bulk Input
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => addMultipleRows(5)}
+                      className="rounded-lg text-xs h-7"
+                    >
+                      +5 Students
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => addMultipleRows(10)}
+                      className="rounded-lg text-xs h-7"
+                    >
+                      +10 Students
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => addMultipleRows(20)}
+                      className="rounded-lg text-xs h-7"
+                    >
+                      +20 Students
+                    </Button>
+                  </div>
+                </div>
+                
+                <div className="space-y-3">
                   {userRows.map((row, i) => (
                     <div key={i} className="space-y-2 p-3 rounded-xl border border-border/50 bg-muted/20">
                       <Input value={row.fullName} onChange={e => updateUserRow(i, "fullName", e.target.value)} placeholder={`Full Name ${i + 1}`} className="rounded-xl w-full" />
@@ -835,7 +1211,7 @@ export default function RegistrarPortal() {
                           </SelectContent>
                         </Select>
                         <div className="flex items-center flex-1">
-                          <span className="bg-muted px-2.5 py-2 rounded-l-xl border border-r-0 border-input text-sm font-mono font-semibold text-muted-foreground">MJS</span>
+                          <span className="bg-muted px-2.5 py-2 rounded-l-xl border border-r-0 border-input text-sm font-mono font-semibold text-muted-foreground">{idPrefixes.student}</span>
                           <Input value={row.idNumber} readOnly placeholder="001" className="rounded-l-none rounded-r-xl font-mono bg-muted/50 cursor-not-allowed" />
                         </div>
                         {userRows.length > 1 && <Button variant="ghost" size="icon" onClick={() => removeUserRow(i)} className="shrink-0 text-destructive rounded-xl">✕</Button>}
@@ -846,7 +1222,7 @@ export default function RegistrarPortal() {
                 </div>
                 <Button onClick={handleCreateStudents} disabled={creating} className="w-full rounded-xl gradient-primary border-0 text-white h-11 font-semibold">
                   <UserPlus className="h-4 w-4 mr-2" />
-                  {creating ? "Creating..." : `Create ${userRows.filter(r => r.fullName.trim()).length} Student(s)`}
+                  {creating ? "Creating..." : `Create ${userRows.filter(r => r.fullName.trim()).length} Student(s)${autoAssignClass ? ` for Grade ${registrationGrade}` : ''}`}
                 </Button>
                 <p className="text-xs text-muted-foreground text-center">Credentials auto-generated: Username = firstname.lastname.id, Password = pass + ID</p>
               </CardContent>
@@ -964,29 +1340,48 @@ export default function RegistrarPortal() {
                         <CheckSquare className="h-5 w-5 text-white" />
                       </div>
                       <div>
-                        <p className="font-semibold text-foreground">Registration Statistics</p>
-                        <p className="text-xs text-muted-foreground">Current registration status overview</p>
+                        <p className="font-semibold text-foreground">Student Account Statistics</p>
+                        <p className="text-xs text-muted-foreground">Current student account overview</p>
                       </div>
                     </div>
                     
                     <div className="grid grid-cols-3 gap-4 text-center">
                       <div className="space-y-1">
-                        <p className="text-2xl font-bold text-foreground">--</p>
-                        <p className="text-xs text-muted-foreground">Registered</p>
+                        <p className="text-2xl font-bold text-emerald-600">
+                          {students.filter(s => s.is_active).length}
+                        </p>
+                        <p className="text-xs text-muted-foreground">Active Students</p>
                       </div>
                       <div className="space-y-1">
-                        <p className="text-2xl font-bold text-foreground">--</p>
-                        <p className="text-xs text-muted-foreground">Pending</p>
+                        <p className="text-2xl font-bold text-amber-600">
+                          {students.filter(s => !s.grade_level).length}
+                        </p>
+                        <p className="text-xs text-muted-foreground">Unassigned Grade</p>
                       </div>
                       <div className="space-y-1">
-                        <p className="text-2xl font-bold text-foreground">--</p>
+                        <p className="text-2xl font-bold text-foreground">
+                          {students.length}
+                        </p>
                         <p className="text-xs text-muted-foreground">Total Students</p>
                       </div>
                     </div>
                     
-                    <p className="text-xs text-muted-foreground text-center mt-4">
-                      Statistics will be available when registration data is present
-                    </p>
+                    <div className="mt-4 space-y-2">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">Grade Distribution:</span>
+                      </div>
+                      <div className="grid grid-cols-4 gap-2 text-center">
+                        {[9, 10, 11, 12].map(grade => {
+                          const count = students.filter(s => s.grade_level === grade).length;
+                          return (
+                            <div key={grade} className="bg-muted/30 rounded-lg p-2">
+                              <p className="text-sm font-bold text-foreground">{count}</p>
+                              <p className="text-xs text-muted-foreground">Grade {grade}</p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </CardContent>
                 </Card>
               </div>
@@ -1540,6 +1935,53 @@ export default function RegistrarPortal() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Bulk Names Input Dialog */}
+      <Dialog open={bulkInputOpen} onOpenChange={setBulkInputOpen}>
+        <DialogContent aria-describedby={undefined} className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Bulk Name Input</DialogTitle>
+            <p className="text-xs text-muted-foreground">
+              Enter student names, one per line. They will be added to the registration form.
+            </p>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label className="text-sm">Student Names</Label>
+              <textarea
+                value={bulkNames}
+                onChange={(e) => setBulkNames(e.target.value)}
+                placeholder="John Doe&#10;M Ahmed Ali&#10;F Sara Mohamed&#10;Bob Johnson&#10;..."
+                className="w-full h-32 p-3 text-sm border border-input rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">
+                  Enter one name per line. Empty lines will be ignored.
+                </p>
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-2">
+                  <p className="text-xs text-blue-700 font-medium mb-1">💡 Gender Auto-Detection:</p>
+                  <p className="text-xs text-blue-600">
+                    • Start with <strong>"M "</strong> for male students: <code>M John Doe</code><br/>
+                    • Start with <strong>"F "</strong> for female students: <code>F Jane Smith</code><br/>
+                    • The prefix will be removed and gender auto-assigned
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="flex gap-3">
+            <DialogClose asChild>
+              <Button variant="outline" className="flex-1 rounded-xl">Cancel</Button>
+            </DialogClose>
+            <Button
+              onClick={processBulkNames}
+              className="flex-1 rounded-xl gradient-primary border-0 text-white"
+            >
+              Add Names
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

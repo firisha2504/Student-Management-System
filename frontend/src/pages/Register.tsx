@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { useStreams } from "@/contexts/SchoolConfigContext";
 import { api } from "@/services/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,7 @@ import SuccessModal from "@/components/SuccessModal";
 export default function Register() {
   const { profile, refreshProfile } = useAuth();
   const { toast } = useToast();
+  const streams = useStreams();
   const [gradeLevel, setGradeLevel] = useState<string>("");
   const [stream, setStream] = useState<string>("");
   const [section, setSection] = useState<string>("");
@@ -150,7 +152,7 @@ export default function Register() {
                 <div className="space-y-2">
                   <Label>Stream</Label>
                   <Input 
-                    value={profile.stream === 'natural' ? 'Natural Science' : profile.stream === 'social' ? 'Social Science' : profile.stream} 
+                    value={profile.stream ? profile.stream.charAt(0).toUpperCase() + profile.stream.slice(1) : ''} 
                     disabled 
                     className="bg-muted/50" 
                   />
@@ -161,8 +163,11 @@ export default function Register() {
                   <Select value={stream} onValueChange={setStream}>
                     <SelectTrigger><SelectValue placeholder="Select your stream" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="natural">Natural Science</SelectItem>
-                      <SelectItem value="social">Social Science</SelectItem>
+                      {streams.map(s => (
+                        <SelectItem key={s} value={s}>
+                          {s.charAt(0).toUpperCase() + s.slice(1)}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                   <div className="flex items-start gap-2 rounded-xl bg-primary/10 p-3 border border-primary/20">

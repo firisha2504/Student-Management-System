@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
+import { useIdPrefixes, useSchoolConfig } from "@/contexts/SchoolConfigContext";
 import { useToast } from "@/hooks/use-toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import {
@@ -46,6 +46,8 @@ const sidebarItems: { id: AdminSection; label: string; icon: React.ElementType }
 export default function Admin() {
   const { role } = useAuth();
   const { toast } = useToast();
+  const idPrefixes = useIdPrefixes();
+  const { config } = useSchoolConfig();
 
 
   const [users, setUsers] = useState<UserWithRole[]>([]);
@@ -247,7 +249,7 @@ export default function Admin() {
       const timestamp = Date.now();
       const randomSuffix = Math.floor(Math.random() * 100000);
       const nameHash = row.fullName.toLowerCase().replace(/\s+/g, '');
-      const email = `${nameHash}.${timestamp}.${i}.${randomSuffix}@school.com`;
+      const email = `${nameHash}.${timestamp}.${i}.${randomSuffix}@${config.system?.emailDomain || 'school.com'}`;
 
       try {
         const result = await api.createUser({
@@ -738,7 +740,7 @@ export default function Admin() {
                         </Select>
                         <div className="flex items-center flex-1">
                           <span className="bg-muted px-2.5 py-2 rounded-l-xl border border-r-0 border-input text-sm font-mono font-semibold text-muted-foreground">
-                            {{ student: 'MJ', teacher: 'MJT', registrar: 'MJR', director: 'MJD', parent: 'MJP', admin: 'MJA' }[createRole] || 'MJ'}
+                            {idPrefixes[createRole as keyof typeof idPrefixes] || idPrefixes.student}
                           </span>
                           <Input 
                             value={row.idNumber} 

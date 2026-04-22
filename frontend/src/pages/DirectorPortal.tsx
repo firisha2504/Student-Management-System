@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { useGradeLevels, useStreams, useSections, useSubSections } from "@/contexts/SchoolConfigContext";
 import { api } from "@/services/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -71,6 +72,10 @@ const GENDER_COLORS = { male: "hsl(220, 70%, 55%)", female: "hsl(340, 70%, 55%)"
 export default function DirectorPortal() {
   const { role } = useAuth();
   const { toast } = useToast();
+  const gradeLevels = useGradeLevels();
+  const streams = useStreams();
+  const sections = useSections();
+  const subSections = useSubSections();
   const [teachers, setTeachers] = useState<UserWithRole[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeSection, setActiveSection] = useState<DirectorSection>("teachers");
@@ -604,14 +609,13 @@ export default function DirectorPortal() {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <Select value={rankGrade} onValueChange={v => { setRankGrade(v); setRankStream(""); }}>
                     <SelectTrigger className="rounded-xl"><SelectValue placeholder="Grade" /></SelectTrigger>
-                    <SelectContent>{[9,10,11,12].map(g => <SelectItem key={g} value={String(g)}>Grade {g}</SelectItem>)}</SelectContent>
+                    <SelectContent>{gradeLevels.map(g => <SelectItem key={g} value={String(g)}>Grade {g}</SelectItem>)}</SelectContent>
                   </Select>
                   {needsStream && (
                     <Select value={rankStream} onValueChange={setRankStream}>
                       <SelectTrigger className="rounded-xl"><SelectValue placeholder="Stream" /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="natural">Natural</SelectItem>
-                        <SelectItem value="social">Social</SelectItem>
+                        {streams.map(s => <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   )}
@@ -628,7 +632,7 @@ export default function DirectorPortal() {
                     <SelectTrigger className="rounded-xl"><SelectValue placeholder="Sub-Section" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All</SelectItem>
-                      {["A","B","C","D","E","F","G","H"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                      {subSections.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                     </SelectContent>
                   </Select>
                   <Button onClick={fetchRankings} disabled={loadingRankings} className="rounded-xl gradient-primary border-0 text-white">
@@ -780,15 +784,14 @@ export default function DirectorPortal() {
                     <SelectTrigger className="rounded-xl w-32"><SelectValue placeholder="Grade" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Grades</SelectItem>
-                      {[9,10,11,12].map(g => <SelectItem key={g} value={String(g)}>Grade {g}</SelectItem>)}
+                      {gradeLevels.map(g => <SelectItem key={g} value={String(g)}>Grade {g}</SelectItem>)}
                     </SelectContent>
                   </Select>
                   <Select value={perfStream} onValueChange={setPerfStream}>
                     <SelectTrigger className="rounded-xl w-32"><SelectValue placeholder="Stream" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Streams</SelectItem>
-                      <SelectItem value="natural">Natural</SelectItem>
-                      <SelectItem value="social">Social</SelectItem>
+                      {streams.map(s => <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
@@ -1144,7 +1147,7 @@ export default function DirectorPortal() {
             <div className="space-y-2">
               <p className="text-sm font-semibold">Grade Levels</p>
               <div className="grid grid-cols-4 gap-2">
-                {[9,10,11,12].map(g => (
+                {gradeLevels.map(g => (
                   <label key={g} className={cn("flex items-center justify-center p-3 rounded-xl border-2 cursor-pointer transition-all", assignedGradeLevels.includes(g) ? "border-primary bg-primary/10 text-primary font-semibold" : "border-border hover:border-primary/40")}>
                     <Checkbox checked={assignedGradeLevels.includes(g)} onCheckedChange={() => toggleGradeAssignment(g)} className="sr-only" />
                     <span className="text-sm">G{g}</span>
@@ -1155,7 +1158,7 @@ export default function DirectorPortal() {
             <div className="space-y-2">
               <p className="text-sm font-semibold">Sections</p>
               <div className="grid grid-cols-3 gap-2">
-                {["oromo","amharic","somali"].map(s => (
+                {sections.map(s => (
                   <label key={s} className={cn("flex items-center justify-center p-3 rounded-xl border-2 cursor-pointer transition-all capitalize", assignedSections.includes(s) ? "border-primary bg-primary/10 text-primary font-semibold" : "border-border hover:border-primary/40")}>
                     <Checkbox checked={assignedSections.includes(s)} onCheckedChange={() => toggleSectionAssignment(s)} className="sr-only" />
                     <span className="text-sm">{s}</span>
@@ -1166,7 +1169,7 @@ export default function DirectorPortal() {
             <div className="space-y-2">
               <p className="text-sm font-semibold">Sub-Sections</p>
               <div className="grid grid-cols-4 gap-2">
-                {["A","B","C","D","E","F","G","H"].map(s => (
+                {subSections.map(s => (
                   <label key={s} className={cn("flex items-center justify-center p-3 rounded-xl border-2 cursor-pointer transition-all", assignedSubSections.includes(s) ? "border-primary bg-primary/10 text-primary font-semibold" : "border-border hover:border-primary/40")}>
                     <Checkbox checked={assignedSubSections.includes(s)} onCheckedChange={() => toggleSubSectionAssignment(s)} className="sr-only" />
                     <span className="text-sm">{s}</span>
@@ -1290,8 +1293,7 @@ export default function DirectorPortal() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Streams</SelectItem>
-                    <SelectItem value="natural">Natural</SelectItem>
-                    <SelectItem value="social">Social</SelectItem>
+                    {streams.map(s => <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
