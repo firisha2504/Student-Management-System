@@ -1026,8 +1026,8 @@ export default function TeacherPortal() {
             );
           })}
 
-          {/* Score tabs - only show when in grades section with assessments */}
-          {activeSection === "grades" && (selectedSubjectId && selectedGrade && assessmentTypes.length > 0) && (
+          {/* Score tabs - only show when in grades section */}
+          {activeSection === "grades" && (
             <>
               <div className="px-2 pt-2">
                 <div className="h-px bg-border/50"></div>
@@ -1035,6 +1035,8 @@ export default function TeacherPortal() {
               {scoreNavItems.map(item => {
                 const Icon = item.icon;
                 const isActive = scoreTab === item.id;
+                // "Enter / Edit Scores" only shows when a subject+assessments are selected
+                if (item.id === "scores" && !(selectedSubjectId && assessmentTypes.length > 0)) return null;
                 return (
                   <button
                     key={item.id}
