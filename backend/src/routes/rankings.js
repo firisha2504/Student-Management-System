@@ -16,6 +16,13 @@ router.get('/by-grade', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'grade_level is required' });
     }
     
+    // Teachers (non-homeroom) cannot access rankings
+    if (userRole === 'teacher') {
+      return res.status(403).json({ 
+        error: 'Only homeroom teachers can view rankings. Please use the homeroom section if you are a homeroom teacher.' 
+      });
+    }
+    
     // Get current term and academic year if not provided
     const [settings] = await pool.query(
       "SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ('current_term', 'current_academic_year')"
@@ -44,6 +51,26 @@ router.get('/by-grade', authenticate, async (req, res) => {
     }
     
     // Build query to calculate rankings using assessment_scores
+    // First, get the total number of subjects for this grade level
+    let subjectCountQuery = `
+      SELECT COUNT(DISTINCT id) as total_subjects
+      FROM subjects
+      WHERE grade_level = ?
+    `;
+    const subjectCountParams = [grade_level];
+    
+    if (stream) {
+      subjectCountQuery += ' AND (stream = ? OR stream IS NULL)';
+      subjectCountParams.push(stream);
+    } else {
+      subjectCountQuery += ' AND stream IS NULL';
+    }
+    
+    const [subjectCount] = await pool.query(subjectCountQuery, subjectCountParams);
+    const requiredSubjects = subjectCount[0]?.total_subjects || 0;
+    
+    console.log('Required subjects for grade', grade_level, 'stream', stream, ':', requiredSubjects);
+    
     let query = `
       SELECT 
         u.id as user_id,
@@ -74,16 +101,18 @@ router.get('/by-grade', authenticate, async (req, res) => {
     
     query += `
       GROUP BY u.id, p.full_name, sp.grade_level, sp.stream, sp.section, sp.sub_section
-      HAVING COUNT(DISTINCT at.subject_id) > 0
+      HAVING COUNT(DISTINCT at.subject_id) >= ?
       ORDER BY average_score DESC
     `;
+    
+    params.push(requiredSubjects);
     
     const [students] = await pool.query(query, params);
     
     console.log('Rankings query executed - Grade:', grade_level, 'Stream:', stream, 'Term:', currentTerm, 'Year:', currentYear);
-    console.log('Found students for rankings:', students.length);
+    console.log('Required subjects:', requiredSubjects, '- Found students with all subjects:', students.length);
     if (students.length > 0) {
-      console.log('Top student:', students[0].full_name, 'Average:', students[0].average_score);
+      console.log('Top student:', students[0].full_name, 'Average:', students[0].average_score, 'Subjects:', students[0].total_subjects);
     }
     
     // Add rank to each student

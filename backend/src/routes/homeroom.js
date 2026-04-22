@@ -73,7 +73,42 @@ router.get('/my-class-rankings', authenticate, authorize('teacher'), async (req,
     const currentTerm = term || settings.find(s => s.setting_key === 'current_term')?.setting_value || 'Semester 1';
     const currentYear = academic_year || settings.find(s => s.setting_key === 'current_academic_year')?.setting_value || '2024-2025';
     
-    // Get rankings for students in this teacher's homeroom
+    // Get homeroom assignment to determine grade level and stream
+    const [homeroomInfo] = await pool.query(
+      `SELECT grade_level, stream FROM student_profiles WHERE homeroom_teacher_id = ? LIMIT 1`,
+      [teacherId]
+    );
+    
+    if (homeroomInfo.length === 0) {
+      return res.json({ 
+        approved: true, // Always approved for homeroom teachers
+        message: 'No homeroom assignment found',
+        rankings: [] 
+      });
+    }
+    
+    const { grade_level, stream } = homeroomInfo[0];
+    
+    // Get the total number of subjects for this grade level
+    let subjectCountQuery = `
+      SELECT COUNT(DISTINCT id) as total_subjects
+      FROM subjects
+      WHERE grade_level = ?
+    `;
+    const subjectCountParams = [grade_level];
+    
+    if (stream) {
+      subjectCountQuery += ' AND (stream = ? OR stream IS NULL)';
+      subjectCountParams.push(stream);
+    } else {
+      subjectCountQuery += ' AND stream IS NULL';
+    }
+    
+    const [subjectCount] = await pool.query(subjectCountQuery, subjectCountParams);
+    const requiredSubjects = subjectCount[0]?.total_subjects || 0;
+    
+    // Get rankings for students in this teacher's homeroom - only those with all subjects
+    // Homeroom teachers can always see rankings (no approval check)
     const [rankings] = await pool.query(
       `SELECT 
         u.id as user_id,
@@ -93,8 +128,9 @@ router.get('/my-class-rankings', authenticate, authorize('teacher'), async (req,
       LEFT JOIN assessment_types at ON s.assessment_type_id = at.id
       WHERE sp.homeroom_teacher_id = ?
       GROUP BY u.id, p.full_name, sp.admission_number, sp.grade_level, sp.section, sp.sub_section, sp.stream
+      HAVING COUNT(DISTINCT at.subject_id) >= ?
       ORDER BY average_score DESC`,
-      [currentTerm, currentYear, teacherId]
+      [currentTerm, currentYear, teacherId, requiredSubjects]
     );
     
     // Add rank to each student
@@ -104,7 +140,10 @@ router.get('/my-class-rankings', authenticate, authorize('teacher'), async (req,
       average_score: student.average_score ? Math.round(student.average_score * 100) / 100 : 0
     }));
     
-    res.json({ rankings: rankedStudents });
+    res.json({ 
+      approved: true, // Always approved for homeroom teachers
+      rankings: rankedStudents 
+    });
   } catch (error) {
     console.error('Get homeroom rankings error:', error);
     res.status(500).json({ error: 'Failed to fetch homeroom rankings' });

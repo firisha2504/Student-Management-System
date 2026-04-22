@@ -78,6 +78,7 @@ export default function TeacherPortal() {
   // Homeroom
   const [homeroomStudents, setHomeroomStudents] = useState<StudentProfile[]>([]);
   const [homeroomRankings, setHomeroomRankings] = useState<any[]>([]);
+  const [homeroomRankingsApproved, setHomeroomRankingsApproved] = useState(false);
   const [loadingHomeroom, setLoadingHomeroom] = useState(false);
   const [homeroomAssignment, setHomeroomAssignment] = useState<any>(null);
 
@@ -213,14 +214,15 @@ export default function TeacherPortal() {
     const fetchHomeroom = async () => {
       setLoadingHomeroom(true);
       try {
-        const [assignment, students, rankings] = await Promise.all([
+        const [assignment, students, rankingsData] = await Promise.all([
           api.getMyHomeroom(),
           api.getMyHomeroomStudents(),
           api.getMyClassRankings({ term, academic_year: academicYear }),
         ]);
         setHomeroomAssignment(assignment.length > 0 ? assignment[0] : null);
         setHomeroomStudents(students || []);
-        setHomeroomRankings(rankings.rankings || []);
+        setHomeroomRankings(rankingsData.rankings || []);
+        setHomeroomRankingsApproved(rankingsData.approved || false);
       } catch (error: any) {
         toast({ title: "Error", description: error.message || "Failed to load homeroom data", variant: "destructive" });
       }
@@ -246,34 +248,43 @@ export default function TeacherPortal() {
     }
     
     try {
-      if (applyToAllSubjects && assignments.length > 0) {
-        // Bulk create for all teacher's subjects
+      if (applyToAllSubjects) {
+        // Bulk create for all teacher's subjects in the selected grade level
+        const subjectsInGrade = mySubjects.filter(s => s.grade_level === selectedGrade);
+        
+        if (subjectsInGrade.length === 0) {
+          toast({ 
+            title: "Error", 
+            description: "No subjects found for this grade level", 
+            variant: "destructive" 
+          });
+          return;
+        }
+        
         let successCount = 0;
         let failCount = 0;
         
-        for (const assignment of assignments) {
+        for (const subject of subjectsInGrade) {
           try {
             const filters: any = { 
-              subject_id: assignment.subject_id, 
-              grade_level: assignment.grade_level, 
+              subject_id: subject.id, 
+              grade_level: subject.grade_level, 
               assessment_name: name, 
               weight 
             };
-            if (assignment.section) filters.section = assignment.section;
-            if (assignment.sub_section) filters.sub_section = assignment.sub_section;
-            if (assignment.stream) filters.stream = assignment.stream;
+            if (subject.stream) filters.stream = subject.stream;
             
             await api.createAssessmentType(filters);
             successCount++;
           } catch (e: any) {
-            console.error(`Failed to create assessment for subject ${assignment.subject_id}:`, e);
+            console.error(`Failed to create assessment for subject ${subject.subject_name}:`, e);
             failCount++;
           }
         }
         
         toast({ 
           title: "Bulk Assessment Created", 
-          description: `Created "${name}" for ${successCount} subject(s)${failCount > 0 ? `. Failed for ${failCount} subject(s)` : ''}`,
+          description: `Created "${name}" for ${successCount} subject(s) in Grade ${selectedGrade}${failCount > 0 ? `. Failed for ${failCount} subject(s)` : ''}`,
         });
         
         // Refresh current subject's assessments
@@ -515,7 +526,7 @@ export default function TeacherPortal() {
 
                 {/* Add custom */}
                 <div className="space-y-3">
-                  {assignments.length > 1 && (
+                  {selectedGrade && mySubjects.filter(s => s.grade_level === selectedGrade).length > 1 && (
                     <div className="flex items-center gap-2 p-2 rounded-lg bg-blue-50 dark:bg-blue-950/20">
                       <Checkbox 
                         id="apply-all-subjects"
@@ -524,7 +535,7 @@ export default function TeacherPortal() {
                         className="rounded-md"
                       />
                       <Label htmlFor="apply-all-subjects" className="text-xs cursor-pointer flex-1">
-                        Apply this assessment to all my subjects ({assignments.length} subjects)
+                        Apply this assessment to all my subjects in Grade {selectedGrade} ({mySubjects.filter(s => s.grade_level === selectedGrade).length} subjects)
                       </Label>
                       <Badge variant="secondary" className="text-xs">
                         Bulk Create
@@ -910,7 +921,13 @@ export default function TeacherPortal() {
                 Class Rankings
               </h3>
               {homeroomRankings.length === 0 ? (
-                <p className="text-center text-muted-foreground py-6">No rankings available yet</p>
+                <div className="text-center py-10">
+                  <AlertCircle className="h-12 w-12 mx-auto mb-3 text-muted-foreground/50" />
+                  <p className="text-muted-foreground">No students with complete subject scores yet</p>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Students will appear here once they have completed all required subjects.
+                  </p>
+                </div>
               ) : (
                 <div className="overflow-x-auto">
                   <Table>

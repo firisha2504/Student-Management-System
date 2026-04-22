@@ -280,14 +280,17 @@ export default function DirectorPortal() {
     if (!selectedHomeroomTeacher) return;
     setSavingHomeroom(true);
     try {
-      const currentYear = new Date().getFullYear();
+      // Get current academic year from system settings
+      const yearData = await api.getCurrentAcademicYear();
+      const currentAcademicYear = yearData?.academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
+      
       const assignmentData = {
         teacher_id: selectedHomeroomTeacher,
         grade_level: homeroomGrade,
         section: homeroomSection === "all" ? undefined : homeroomSection,
         sub_section: homeroomSubSection === "all" ? undefined : homeroomSubSection,
         stream: homeroomStream === "all" ? undefined : homeroomStream,
-        academic_year: `${currentYear}-${currentYear + 1}`,
+        academic_year: currentAcademicYear,
       };
 
       if (editingAssignmentId) {
