@@ -67,7 +67,9 @@ export const api = {
   },
   
   async getProfile() {
-    return apiRequest('/auth/me');
+    // Add cache-busting parameter to ensure fresh data
+    const timestamp = Date.now();
+    return apiRequest(`/auth/me?_t=${timestamp}`);
   },
 
   // Profile

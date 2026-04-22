@@ -400,6 +400,11 @@ export default function TeacherPortal() {
     { id: "homeroom", label: "My Homeroom", icon: BookOpen },
   ];
 
+  const scoreNavItems: { id: ScoreTab; label: string; icon: React.ElementType }[] = [
+    { id: "scores", label: "Enter / Edit Scores", icon: Upload },
+    { id: "view", label: "View Uploaded", icon: Eye },
+  ];
+
   const handleNavClick = (id: NavSection) => { setActiveSection(id); setMobileSidebarOpen(false); };
 
   if (role !== "teacher") return <p className="text-destructive">Access denied.</p>;
@@ -584,31 +589,18 @@ export default function TeacherPortal() {
         </Collapsible>
       )}
 
-      {/* Score Tabs - Moved outside card */}
+      {/* Content card */}
       {(selectedSubjectId && selectedGrade && assessmentTypes.length > 0) || scoreTab === "view" ? (
-        <>
-          {/* Tab bar outside card */}
-          <div className="flex gap-2 mb-4">
-            {([["scores", "Enter / Edit Scores", Upload], ["view", "View Uploaded", Eye]] as const).map(([id, label, Icon]) => (
-              <button key={id} onClick={() => setScoreTab(id as ScoreTab)}
-                className={cn("flex items-center gap-2 px-5 py-3 text-sm font-medium transition-colors rounded-xl",
-                  scoreTab === id ? "gradient-primary text-white shadow-md" : "bg-card text-muted-foreground hover:bg-muted/50 hover:text-foreground border border-border/50")}>
-                <Icon className="h-4 w-4" />{label}
-              </button>
-            ))}
-          </div>
-
-          {/* Content card */}
-          <Card className="border-0 shadow-sm">
-            <CardContent className="p-4">
-              {/* Enter scores */}
-              {scoreTab === "scores" && (
-                <div className="space-y-3">
-                  {loadingStudents ? <p className="text-center text-muted-foreground py-6">Loading students...</p> : students.length === 0 ? (
-                    <p className="text-center text-muted-foreground py-6">No students found for this selection.</p>
-                  ) : (
-                    <>
-                      <div className="overflow-x-auto">
+        <Card className="border-0 shadow-sm">
+          <CardContent className="p-4">
+            {/* Enter scores */}
+            {scoreTab === "scores" && (
+              <div className="space-y-3">
+                {loadingStudents ? <p className="text-center text-muted-foreground py-6">Loading students...</p> : students.length === 0 ? (
+                  <p className="text-center text-muted-foreground py-6">No students found for this selection.</p>
+                ) : (
+                  <>
+                    <div className="overflow-x-auto">
                         <Table>
                         <TableHeader>
                           <TableRow className="bg-muted/20">
@@ -664,8 +656,17 @@ export default function TeacherPortal() {
                 {savedScores.length === 0 ? (
                   <p className="text-center text-muted-foreground py-6">No scores uploaded yet.</p>
                 ) : (() => {
+                  // Filter scores by selected grade level
+                  const filteredScores = selectedGrade 
+                    ? savedScores.filter(sc => (sc as any).grade_level === selectedGrade)
+                    : savedScores;
+
+                  if (filteredScores.length === 0) {
+                    return <p className="text-center text-muted-foreground py-6">No scores uploaded for Grade {selectedGrade}.</p>;
+                  }
+
                   // Group by student_id → subject_name
-                  const byStudent = savedScores.reduce<Record<number, { full_name: string; username: string; admission_number?: string; subjects: Record<string, number> }>>((acc, sc) => {
+                  const byStudent = filteredScores.reduce<Record<number, { full_name: string; username: string; admission_number?: string; subjects: Record<string, number> }>>((acc, sc) => {
                     const subj = (sc as any).subject_name ?? "Unknown Subject";
                     if (!acc[sc.student_id]) {
                       acc[sc.student_id] = { 
@@ -684,7 +685,7 @@ export default function TeacherPortal() {
                   }, {});
 
                   // Get all unique subjects
-                  const allSubjects = [...new Set(savedScores.map(sc => (sc as any).subject_name ?? "Unknown Subject"))].sort();
+                  const allSubjects = [...new Set(filteredScores.map(sc => (sc as any).subject_name ?? "Unknown Subject"))].sort();
 
                   // Convert to array for sorting
                   const studentsArray = Object.entries(byStudent).map(([studentId, data]) => ({
@@ -754,9 +755,8 @@ export default function TeacherPortal() {
                 })()}
               </div>
             )}
-            </CardContent>
-          </Card>
-        </>
+          </CardContent>
+        </Card>
       ) : null}
 
       {selectedSubjectId && selectedGrade && assessmentTypes.length === 0 && (
@@ -1025,6 +1025,32 @@ export default function TeacherPortal() {
               </button>
             );
           })}
+
+          {/* Score tabs - only show when in grades section with assessments */}
+          {activeSection === "grades" && (selectedSubjectId && selectedGrade && assessmentTypes.length > 0) && (
+            <>
+              <div className="px-2 pt-2">
+                <div className="h-px bg-border/50"></div>
+              </div>
+              {scoreNavItems.map(item => {
+                const Icon = item.icon;
+                const isActive = scoreTab === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => setScoreTab(item.id)}
+                    className={cn(
+                      "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all",
+                      isActive ? "gradient-primary text-white shadow-md" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                    )}
+                  >
+                    <Icon className="h-4 w-4 shrink-0" />
+                    {!sidebarCollapsed && <span>{item.label}</span>}
+                  </button>
+                );
+              })}
+            </>
+          )}
         </nav>
 
         {/* Student count badge at bottom */}
@@ -1051,7 +1077,7 @@ export default function TeacherPortal() {
           </span>
         </div>
 
-        <main className="flex-1 p-4 sm:p-6 overflow-y-auto">
+        <main className="flex-1 p-4 sm:p-6 overflow-y-auto relative">
           {activeSection === "grades" ? renderGradesSection() : activeSection === "students" ? renderStudentsSection() : renderHomeroomSection()}
         </main>
       </div>

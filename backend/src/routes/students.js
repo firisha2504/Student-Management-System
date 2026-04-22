@@ -224,20 +224,53 @@ router.get('/rankings/by-grade', authenticate, authorize('admin', 'director', 't
 // Get student's own stats (for student dashboard)
 router.get('/me/stats', authenticate, authorize('student'), async (req, res) => {
   try {
-    const userId = req.user.userId;
+    const userId = req.userId;
     
-    // Get student's grades count and average
+    // Get student's profile to check grade level and stream
+    const [profile] = await pool.query(`
+      SELECT sp.grade_level, sp.stream
+      FROM student_profiles sp
+      WHERE sp.user_id = ?
+    `, [userId]);
+    
+    if (profile.length === 0) {
+      return res.json({
+        totalGrades: 0,
+        avgScore: 0
+      });
+    }
+    
+    const { grade_level, stream } = profile[0];
+    
+    // Get current academic year and term from system settings
+    const [settings] = await pool.query('SELECT setting_key, setting_value FROM system_settings');
+    const currentTerm = settings.find(s => s.setting_key === 'current_term')?.setting_value || 'Semester 1';
+    const currentYear = settings.find(s => s.setting_key === 'current_academic_year')?.setting_value || '2025-2026';
+    
+    // Check if rankings are approved for this student's grade/stream
+    const [approval] = await pool.query(
+      `SELECT id FROM ranking_approvals 
+       WHERE grade_level = ? 
+       AND (stream = ? OR (stream IS NULL AND ? IS NULL))
+       AND term = ? AND academic_year = ?`,
+      [grade_level, stream, stream, currentTerm, currentYear]
+    );
+    
+    const isApproved = approval.length > 0;
+    
+    // Get student's assessment scores count
     const [gradeStats] = await pool.query(`
       SELECT 
         COUNT(*) as total_grades,
         AVG(score) as average_score
-      FROM grades
+      FROM assessment_scores
       WHERE student_id = ?
     `, [userId]);
     
     res.json({
       totalGrades: gradeStats[0]?.total_grades || 0,
-      avgScore: gradeStats[0]?.average_score ? Math.round(gradeStats[0].average_score) : 0
+      // Only show average score if rankings are approved
+      avgScore: isApproved && gradeStats[0]?.average_score ? Math.round(gradeStats[0].average_score) : 0
     });
   } catch (error) {
     console.error('Get student stats error:', error);

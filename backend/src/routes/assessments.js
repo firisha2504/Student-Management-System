@@ -189,6 +189,7 @@ router.get('/scores', authenticate, async (req, res) => {
         at.weight,
         at.teacher_id,
         sub.subject_name,
+        sub.grade_level,
         p.full_name,
         u.username,
         sp.admission_number
@@ -207,6 +208,11 @@ router.get('/scores', authenticate, async (req, res) => {
       console.log('Filtering by teacher_id:', userId);
       query += ' AND at.teacher_id = ?';
       params.push(userId);
+    }
+
+    // If student, only show published scores
+    if (userRole === 'student') {
+      query += ' AND s.published = TRUE';
     }
 
     if (student_id) {
@@ -357,7 +363,7 @@ router.post('/scores/bulk', authenticate, authorize('teacher', 'admin'), [
 
       if (existing.length > 0) {
         await connection.query(
-          'UPDATE assessment_scores SET score = ?, remarks = ? WHERE id = ?',
+          'UPDATE assessment_scores SET score = ?, remarks = ?, published = TRUE WHERE id = ?',
           [score, remarks, existing[0].id]
         );
         updated++;

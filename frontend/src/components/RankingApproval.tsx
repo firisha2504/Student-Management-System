@@ -27,6 +27,7 @@ export default function RankingApproval() {
   const [loading, setLoading] = useState(false);
   const [approved, setApproved] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [bulkApproving, setBulkApproving] = useState(false);
 
   const needsStream = gradeLevel === "11" || gradeLevel === "12";
 

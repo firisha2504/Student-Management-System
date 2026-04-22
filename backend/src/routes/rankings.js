@@ -182,6 +182,79 @@ router.post('/approve', authenticate, authorize('director'), async (req, res) =>
   }
 });
 
+// Bulk approve rankings for all grades (director only)
+router.post('/approve-all', authenticate, authorize('director'), async (req, res) => {
+  try {
+    const { term, academic_year } = req.body;
+    
+    if (!term || !academic_year) {
+      return res.status(400).json({ error: 'term and academic_year are required' });
+    }
+    
+    // Get all grade levels that have students
+    const [grades] = await pool.query(`
+      SELECT DISTINCT sp.grade_level, sp.stream
+      FROM student_profiles sp
+      INNER JOIN users u ON sp.user_id = u.id
+      INNER JOIN user_roles ur ON u.id = ur.user_id
+      WHERE ur.role = 'student' AND sp.grade_level IS NOT NULL
+      ORDER BY sp.grade_level, sp.stream
+    `);
+    
+    let approvedCount = 0;
+    let skippedCount = 0;
+    const results = [];
+    
+    for (const grade of grades) {
+      const { grade_level, stream } = grade;
+      
+      // Check if already approved
+      const [existing] = await pool.query(
+        `SELECT id FROM ranking_approvals 
+         WHERE grade_level = ? 
+         AND (stream = ? OR (stream IS NULL AND ? IS NULL))
+         AND term = ? 
+         AND academic_year = ?`,
+        [grade_level, stream || null, stream || null, term, academic_year]
+      );
+      
+      if (existing.length > 0) {
+        skippedCount++;
+        results.push({
+          grade_level,
+          stream: stream || null,
+          status: 'already_approved'
+        });
+      } else {
+        // Insert approval
+        await pool.query(
+          `INSERT INTO ranking_approvals (grade_level, stream, term, academic_year, approved_by)
+           VALUES (?, ?, ?, ?, ?)`,
+          [grade_level, stream || null, term, academic_year, req.userId]
+        );
+        
+        approvedCount++;
+        results.push({
+          grade_level,
+          stream: stream || null,
+          status: 'approved'
+        });
+      }
+    }
+    
+    res.json({ 
+      message: `Bulk approval completed. Approved: ${approvedCount}, Already approved: ${skippedCount}`,
+      approvedCount,
+      skippedCount,
+      results
+    });
+    
+  } catch (error) {
+    console.error('Bulk approve rankings error:', error);
+    res.status(500).json({ error: 'Failed to bulk approve rankings' });
+  }
+});
+
 // Unpublish rankings (director only)
 router.delete('/approve', authenticate, authorize('director'), async (req, res) => {
   try {
