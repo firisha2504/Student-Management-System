@@ -156,10 +156,22 @@ router.post('/bulk', authenticate, authorize('teacher', 'admin'), [
   }
 });
 
-// Delete grade
+// Delete grade (teacher can only delete their own grades)
 router.delete('/:id', authenticate, authorize('teacher', 'admin'), async (req, res) => {
   try {
     const { id } = req.params;
+    const userRole = req.userRole;
+    const userId = req.userId;
+
+    if (userRole === 'teacher') {
+      const [existing] = await pool.query(
+        'SELECT id FROM grades WHERE id = ? AND teacher_id = ?',
+        [id, userId]
+      );
+      if (existing.length === 0) {
+        return res.status(403).json({ error: 'You can only delete grades you created' });
+      }
+    }
 
     await pool.query('DELETE FROM grades WHERE id = ?', [id]);
 

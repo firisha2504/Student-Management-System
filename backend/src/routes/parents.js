@@ -100,13 +100,12 @@ router.delete('/unlink', authenticate, authorize('admin', 'registrar', 'director
 // Get parent's linked children (for logged-in parent)
 router.get('/me/children', authenticate, authorize('parent'), async (req, res) => {
   try {
-    const parentId = req.user.userId;
+    const parentId = req.userId;
 
     const [children] = await pool.query(`
       SELECT 
         u.id as user_id,
         p.full_name,
-        u.id_number,
         sp.grade_level,
         sp.stream,
         sp.section,
@@ -130,7 +129,7 @@ router.get('/me/children', authenticate, authorize('parent'), async (req, res) =
 // Get child's grade breakdown (for logged-in parent)
 router.get('/children/:studentId/grades', authenticate, authorize('parent'), async (req, res) => {
   try {
-    const parentId = req.user.userId;
+    const parentId = req.userId;
     const { studentId } = req.params;
 
     // Verify parent has access to this student
@@ -165,10 +164,10 @@ router.get('/children/:studentId/grades', authenticate, authorize('parent'), asy
     const subjectParams = [student.grade_level];
 
     if (student.grade_level >= 11 && student.stream) {
-      subjectQuery += ' AND (stream = ? OR stream IS NULL)';
+      subjectQuery += " AND (stream = ? OR stream = 'Common' OR stream IS NULL)";
       subjectParams.push(student.stream);
     } else {
-      subjectQuery += ' AND stream IS NULL';
+      subjectQuery += " AND (stream = 'Common' OR stream IS NULL)";
     }
 
     const [subjects] = await pool.query(subjectQuery, subjectParams);
@@ -248,7 +247,7 @@ router.get('/children/:studentId/grades', authenticate, authorize('parent'), asy
 // Get child's ranking (for logged-in parent)
 router.get('/children/:studentId/ranking', authenticate, authorize('parent'), async (req, res) => {
   try {
-    const parentId = req.user.userId;
+    const parentId = req.userId;
     const { studentId } = req.params;
     const { term, academic_year } = req.query;
 
@@ -266,8 +265,8 @@ router.get('/children/:studentId/ranking', authenticate, authorize('parent'), as
     const [settings] = await pool.query(
       "SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ('current_term', 'current_academic_year')"
     );
-    const currentTerm = term || settings.find(s => s.setting_key === 'current_term')?.setting_value || 'Term 1';
-    const currentYear = academic_year || settings.find(s => s.setting_key === 'current_academic_year')?.setting_value || '2024-2025';
+    const currentTerm = term || settings.find(s => s.setting_key === 'current_term')?.setting_value || 'Semester 1';
+    const currentYear = academic_year || settings.find(s => s.setting_key === 'current_academic_year')?.setting_value || '2025-2026';
 
     // Get student info
     const [studentInfo] = await pool.query(`
@@ -299,47 +298,46 @@ router.get('/children/:studentId/ranking', authenticate, authorize('parent'), as
       });
     }
 
-    // Calculate rankings for the student's group
+    // Calculate rankings using per-subject weighted totals (same logic as main rankings route)
     let query = `
       SELECT 
         u.id as user_id,
-        AVG(g.score) as average_score
+        AVG(subject_totals.subject_score) as average_score
       FROM users u
       INNER JOIN student_profiles sp ON u.id = sp.user_id
-      INNER JOIN grades g ON u.id = g.student_id
+      INNER JOIN (
+        SELECT s.student_id, at.subject_id, SUM(s.score) as subject_score
+        FROM assessment_scores s
+        INNER JOIN assessment_types at ON s.assessment_type_id = at.id
+        WHERE s.term = ? AND s.academic_year = ? AND s.published = TRUE
+        GROUP BY s.student_id, at.subject_id
+      ) subject_totals ON u.id = subject_totals.student_id
       WHERE sp.grade_level = ?
-      AND g.term = ?
-      AND g.academic_year = ?
     `;
-    const params = [student.grade_level, currentTerm, currentYear];
+    const params = [currentTerm, currentYear, student.grade_level];
 
     if (student.stream) {
       query += ' AND sp.stream = ?';
       params.push(student.stream);
     }
 
-    if (student.section) {
-      query += ' AND sp.section = ?';
-      params.push(student.section);
-    }
-
     query += `
       GROUP BY u.id
-      HAVING COUNT(g.id) > 0
+      HAVING COUNT(DISTINCT subject_totals.subject_id) > 0
       ORDER BY average_score DESC
     `;
 
     const [rankings] = await pool.query(query, params);
 
     // Find student's rank
-    const studentRank = rankings.findIndex(r => r.user_id == studentId) + 1;
-    const studentAverage = rankings.find(r => r.user_id == studentId)?.average_score || 0;
+    const studentRankIndex = rankings.findIndex(r => r.user_id == studentId);
+    const studentAverage = studentRankIndex >= 0 ? rankings[studentRankIndex].average_score : null;
 
     res.json({
       approved: true,
-      rank: studentRank || null,
+      rank: studentRankIndex >= 0 ? studentRankIndex + 1 : null,
       total: rankings.length,
-      average: studentAverage ? Math.round(studentAverage * 100) / 100 : 0,
+      average: studentAverage ? Math.round(Number(studentAverage) * 100) / 100 : 0,
     });
 
   } catch (error) {

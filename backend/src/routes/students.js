@@ -258,19 +258,26 @@ router.get('/me/stats', authenticate, authorize('student'), async (req, res) => 
     
     const isApproved = approval.length > 0;
     
-    // Get student's assessment scores count
+    // Get student's assessment score stats using per-subject weighted totals
     const [gradeStats] = await pool.query(`
       SELECT 
-        COUNT(*) as total_grades,
-        AVG(score) as average_score
-      FROM assessment_scores
-      WHERE student_id = ?
+        COUNT(DISTINCT subject_id) as total_subjects,
+        AVG(subject_score) as average_score
+      FROM (
+        SELECT at.subject_id, SUM(s.score) as subject_score
+        FROM assessment_scores s
+        INNER JOIN assessment_types at ON s.assessment_type_id = at.id
+        WHERE s.student_id = ? AND s.published = TRUE
+        GROUP BY at.subject_id
+      ) subject_totals
     `, [userId]);
     
     res.json({
-      totalGrades: gradeStats[0]?.total_grades || 0,
-      // Only show average score if rankings are approved
-      avgScore: isApproved && gradeStats[0]?.average_score ? Math.round(gradeStats[0].average_score) : 0
+      totalGrades: gradeStats[0]?.total_subjects || 0,
+      // Show average based on per-subject weighted totals; hide only if not approved
+      avgScore: isApproved && gradeStats[0]?.average_score
+        ? Math.round(Number(gradeStats[0].average_score))
+        : 0
     });
   } catch (error) {
     console.error('Get student stats error:', error);

@@ -100,33 +100,30 @@ router.post('/archive', authenticate, authorize('registrar', 'admin'), [
     for (const student of students) {
       console.log(`Processing student: ${student.full_name} (Grade ${student.grade_level})`);
       
-      // Get all subjects with complete assessments for this student
+      // Get all subjects where the student has at least one published score.
+      // We sum only the assessments the student actually completed (published),
+      // so a missing component simply contributes 0 rather than excluding the subject.
       const [subjectScores] = await connection.query(`
         SELECT 
           at.subject_id,
           s.subject_name,
-          COUNT(DISTINCT at.id) as total_assessments,
-          COUNT(DISTINCT ascore.id) as completed_assessments,
           SUM(ascore.score * at.weight / 100) as weighted_score
         FROM assessment_types at
         INNER JOIN subjects s ON at.subject_id = s.id
-        LEFT JOIN assessment_scores ascore ON at.id = ascore.assessment_type_id 
+        INNER JOIN assessment_scores ascore ON at.id = ascore.assessment_type_id 
           AND ascore.student_id = ? 
           AND ascore.academic_year = ?
           AND ascore.published = TRUE
         WHERE at.grade_level = ?
-          AND (at.stream IS NULL OR at.stream = ? OR ? IS NULL)
-          AND (at.sub_section IS NULL OR at.sub_section = ? OR ? IS NULL)
+          AND (at.stream IS NULL OR at.stream = '' OR at.stream = ?)
+          AND (at.sub_section IS NULL OR at.sub_section = ?)
         GROUP BY at.subject_id, s.subject_name
-        HAVING total_assessments = completed_assessments AND total_assessments > 0
       `, [
         student.user_id, 
         academic_year, 
         student.grade_level, 
-        student.stream, 
-        student.stream,
-        student.sub_section,
-        student.sub_section
+        student.stream || '',
+        student.sub_section || null
       ]);
 
       console.log(`  Found ${subjectScores.length} subjects with complete assessments`);

@@ -210,9 +210,10 @@ router.get('/scores', authenticate, async (req, res) => {
       params.push(userId);
     }
 
-    // If student, only show published scores
+    // If student, only show their own published scores — students must not see others' scores
     if (userRole === 'student') {
-      query += ' AND s.published = TRUE';
+      query += ' AND s.published = TRUE AND s.student_id = ?';
+      params.push(userId);
     }
 
     if (student_id) {

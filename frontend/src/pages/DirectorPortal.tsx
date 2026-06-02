@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import {
   Users, GraduationCap, BarChart3, Trophy, Eye,
-  Menu, ChevronLeft, ChevronRight, PieChart as PieChartIcon, Medal, Printer, BookOpen
+  Menu, ChevronLeft, ChevronRight, PieChart as PieChartIcon, Medal, Printer, BookOpen, CheckCheck
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import SuccessModal from "@/components/SuccessModal";
@@ -101,6 +101,7 @@ export default function DirectorPortal() {
   const [loadingRankings, setLoadingRankings] = useState(false);
   const [rankingsPublished, setRankingsPublished] = useState(false);
   const [publishingRankings, setPublishingRankings] = useState(false);
+  const [bulkApproving, setBulkApproving] = useState(false);
 
   // Top 10 Overall
   const [top10Rankings, setTop10Rankings] = useState<OverallRankingEntry[]>([]);
@@ -479,22 +480,15 @@ export default function DirectorPortal() {
 
     setPublishingRankings(true);
     try {
-      // Get current academic year - if we're in April 2026, we're in 2025-2026 academic year
-      const currentDate = new Date();
-      const currentMonth = currentDate.getMonth(); // 0-11
-      const currentCalendarYear = currentDate.getFullYear();
-      
-      // Academic year starts in September (month 8), so:
-      // Jan-Aug: we're in (year-1)-(year) academic year
-      // Sep-Dec: we're in (year)-(year+1) academic year
-      const academicStartYear = currentMonth >= 8 ? currentCalendarYear : currentCalendarYear - 1;
-      const academicEndYear = academicStartYear + 1;
-      
+      const yearData = await api.getCurrentAcademicYear();
+      const academicYear = yearData?.academic_year || '2025-2026';
+      const term = yearData?.term || 'Semester 1';
+
       const filters: any = {
         grade_level: parseInt(rankGrade),
         stream: rankStream || undefined,
-        term: 'Semester 1', // Use actual term format
-        academic_year: `${academicStartYear}-${academicEndYear}`, // Use proper academic year format
+        term,
+        academic_year: academicYear,
       };
       
       if (rankSection && rankSection !== "all") filters.section = rankSection;
@@ -513,6 +507,35 @@ export default function DirectorPortal() {
       toast({ title: "Error", description: err.message || "Failed to update rankings", variant: "destructive" });
     }
     setPublishingRankings(false);
+  };
+
+  const approveAllRankings = async () => {
+    setBulkApproving(true);
+    try {
+      const yearData = await api.getCurrentAcademicYear();
+      const academicYear = yearData?.academic_year || '2025-2026';
+      const term = yearData?.term || 'Semester 1';
+
+      const data = await api.approveAllRankings({ term, academic_year: academicYear });
+      setSuccessModal({
+        title: "All Rankings Published",
+        description: `Approved ${data.approvedCount} grade group(s). ${data.skippedCount > 0 ? `${data.skippedCount} already approved.` : ''} Students can now see their ranks.`
+      });
+      // Refresh current view if rankings are loaded
+      if (rankings.length > 0) {
+        const yearData2 = await api.getCurrentAcademicYear();
+        const statusData = await api.getRankingApprovalStatus({
+          grade_level: parseInt(rankGrade),
+          stream: rankStream || undefined,
+          term: yearData2?.term,
+          academic_year: yearData2?.academic_year,
+        });
+        setRankingsPublished(statusData?.approved || false);
+      }
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to approve all rankings", variant: "destructive" });
+    }
+    setBulkApproving(false);
   };
 
   const needsStream = rankGrade === "11" || rankGrade === "12";
@@ -615,6 +638,29 @@ export default function DirectorPortal() {
             </div>
             <Card className="border-0 shadow-sm">
               <CardContent className="pt-6 space-y-4">
+
+                {/* Bulk Approve All */}
+                <div className="flex items-center justify-between p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+                  <div>
+                    <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">Publish All Grade Rankings at Once</p>
+                    <p className="text-xs text-muted-foreground">Approve rankings for all grade levels — students will see their ranks immediately</p>
+                  </div>
+                  <Button
+                    onClick={approveAllRankings}
+                    disabled={bulkApproving}
+                    className="rounded-xl gradient-accent border-0 text-white text-xs shrink-0 ml-4"
+                  >
+                    <CheckCheck className="h-3.5 w-3.5 mr-1.5" />
+                    {bulkApproving ? "Approving..." : "Approve All Grades"}
+                  </Button>
+                </div>
+
+                <div className="relative flex items-center gap-2">
+                  <div className="flex-1 border-t border-border/50" />
+                  <span className="text-xs text-muted-foreground px-2">or approve by grade</span>
+                  <div className="flex-1 border-t border-border/50" />
+                </div>
+
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <Select value={rankGrade} onValueChange={v => { setRankGrade(v); setRankStream(""); }}>
                     <SelectTrigger className="rounded-xl"><SelectValue placeholder="Grade" /></SelectTrigger>

@@ -98,17 +98,18 @@ router.get('/my-class-rankings', authenticate, authorize('teacher'), async (req,
     const subjectCountParams = [grade_level];
     
     if (stream) {
-      subjectCountQuery += ' AND (stream = ? OR stream IS NULL)';
+      subjectCountQuery += " AND (stream = ? OR stream = 'Common' OR stream IS NULL)";
       subjectCountParams.push(stream);
     } else {
-      subjectCountQuery += ' AND stream IS NULL';
+      subjectCountQuery += " AND (stream = 'Common' OR stream IS NULL)";
     }
     
     const [subjectCount] = await pool.query(subjectCountQuery, subjectCountParams);
     const requiredSubjects = subjectCount[0]?.total_subjects || 0;
     
-    // Get rankings for students in this teacher's homeroom - only those with all subjects
-    // Homeroom teachers can always see rankings (no approval check)
+    // Get rankings for students in this teacher's homeroom.
+    // Pre-aggregate scores per subject first, then average across subjects
+    // to avoid inflating averages for subjects with multiple assessment components.
     const [rankings] = await pool.query(
       `SELECT 
         u.id as user_id,
@@ -118,17 +119,25 @@ router.get('/my-class-rankings', authenticate, authorize('teacher'), async (req,
         sp.section,
         sp.sub_section,
         sp.stream,
-        SUM(s.score) as total_score,
-        COUNT(DISTINCT at.subject_id) as total_subjects,
-        (SUM(s.score) / COUNT(DISTINCT at.subject_id)) as average_score
+        COUNT(DISTINCT subject_totals.subject_id) as total_subjects,
+        SUM(subject_totals.subject_score) as total_score,
+        AVG(subject_totals.subject_score) as average_score
       FROM users u
       INNER JOIN profiles p ON u.id = p.user_id
       INNER JOIN student_profiles sp ON u.id = sp.user_id
-      LEFT JOIN assessment_scores s ON u.id = s.student_id AND s.term = ? AND s.academic_year = ?
-      LEFT JOIN assessment_types at ON s.assessment_type_id = at.id
+      INNER JOIN (
+        SELECT
+          s.student_id,
+          at.subject_id,
+          SUM(s.score) as subject_score
+        FROM assessment_scores s
+        INNER JOIN assessment_types at ON s.assessment_type_id = at.id
+        WHERE s.term = ? AND s.academic_year = ? AND s.published = TRUE
+        GROUP BY s.student_id, at.subject_id
+      ) subject_totals ON u.id = subject_totals.student_id
       WHERE sp.homeroom_teacher_id = ?
       GROUP BY u.id, p.full_name, sp.admission_number, sp.grade_level, sp.section, sp.sub_section, sp.stream
-      HAVING COUNT(DISTINCT at.subject_id) >= ?
+      HAVING COUNT(DISTINCT subject_totals.subject_id) >= ?
       ORDER BY average_score DESC`,
       [currentTerm, currentYear, teacherId, requiredSubjects]
     );
@@ -136,8 +145,8 @@ router.get('/my-class-rankings', authenticate, authorize('teacher'), async (req,
     // Add rank to each student
     const rankedStudents = rankings.map((student, index) => ({
       ...student,
-      rank: student.total_subjects > 0 ? index + 1 : null,
-      average_score: student.average_score ? Math.round(student.average_score * 100) / 100 : 0
+      rank: index + 1,
+      average_score: student.average_score ? Math.round(Number(student.average_score) * 100) / 100 : 0
     }));
     
     res.json({ 

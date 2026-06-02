@@ -52,6 +52,7 @@ router.get('/by-grade', authenticate, async (req, res) => {
     
     // Build query to calculate rankings using assessment_scores
     // First, get the total number of subjects for this grade level
+    // 'Common' subjects apply to all streams; stream-specific subjects match by stream value
     let subjectCountQuery = `
       SELECT COUNT(DISTINCT id) as total_subjects
       FROM subjects
@@ -60,10 +61,10 @@ router.get('/by-grade', authenticate, async (req, res) => {
     const subjectCountParams = [grade_level];
     
     if (stream) {
-      subjectCountQuery += ' AND (stream = ? OR stream IS NULL)';
+      subjectCountQuery += " AND (stream = ? OR stream = 'Common' OR stream IS NULL)";
       subjectCountParams.push(stream);
     } else {
-      subjectCountQuery += ' AND stream IS NULL';
+      subjectCountQuery += " AND (stream = 'Common' OR stream IS NULL)";
     }
     
     const [subjectCount] = await pool.query(subjectCountQuery, subjectCountParams);
@@ -71,6 +72,9 @@ router.get('/by-grade', authenticate, async (req, res) => {
     
     console.log('Required subjects for grade', grade_level, 'stream', stream, ':', requiredSubjects);
     
+    // Compute per-subject weighted totals first, then average across subjects.
+    // Each assessment score is a raw score out of its weight value; we sum scores
+    // per subject to get the subject total, then average those totals across subjects.
     let query = `
       SELECT 
         u.id as user_id,
@@ -79,20 +83,28 @@ router.get('/by-grade', authenticate, async (req, res) => {
         sp.stream,
         sp.section,
         sp.sub_section,
-        SUM(s.score) as total_score,
-        COUNT(DISTINCT at.subject_id) as total_subjects,
-        (SUM(s.score) / COUNT(DISTINCT at.subject_id)) as average_score
+        COUNT(DISTINCT subject_totals.subject_id) as total_subjects,
+        SUM(subject_totals.subject_score) as total_score,
+        AVG(subject_totals.subject_score) as average_score
       FROM users u
       INNER JOIN profiles p ON u.id = p.user_id
       INNER JOIN student_profiles sp ON u.id = sp.user_id
-      INNER JOIN assessment_scores s ON u.id = s.student_id
-      INNER JOIN assessment_types at ON s.assessment_type_id = at.id
+      INNER JOIN (
+        SELECT 
+          s.student_id,
+          at.subject_id,
+          SUM(s.score) as subject_score
+        FROM assessment_scores s
+        INNER JOIN assessment_types at ON s.assessment_type_id = at.id
+        WHERE s.term = ?
+        AND s.academic_year = ?
+        AND s.published = TRUE
+        GROUP BY s.student_id, at.subject_id
+      ) subject_totals ON u.id = subject_totals.student_id
       WHERE sp.grade_level = ?
-      AND s.term = ?
-      AND s.academic_year = ?
     `;
     
-    const params = [grade_level, currentTerm, currentYear];
+    const params = [currentTerm, currentYear, grade_level];
     
     if (stream) {
       query += ' AND sp.stream = ?';
@@ -101,7 +113,7 @@ router.get('/by-grade', authenticate, async (req, res) => {
     
     query += `
       GROUP BY u.id, p.full_name, sp.grade_level, sp.stream, sp.section, sp.sub_section
-      HAVING COUNT(DISTINCT at.subject_id) >= ?
+      HAVING COUNT(DISTINCT subject_totals.subject_id) >= ?
       ORDER BY average_score DESC
     `;
     
@@ -334,6 +346,7 @@ router.get('/top10', authenticate, authorize('director'), async (req, res) => {
     const currentYear = academic_year || settings.find(s => s.setting_key === 'current_academic_year')?.setting_value || '2025-2026';
     
     // Build query to calculate top 10 rankings across all grades using assessment_scores
+    // Use per-subject totals to correctly compute averages
     const query = `
       SELECT 
         u.id as user_id,
@@ -341,19 +354,27 @@ router.get('/top10', authenticate, authorize('director'), async (req, res) => {
         sp.grade_level,
         sp.stream,
         sp.section,
-        SUM(s.score) as total_score,
-        COUNT(DISTINCT at.subject_id) as total_subjects,
-        (SUM(s.score) / COUNT(DISTINCT at.subject_id)) as average_score
+        COUNT(DISTINCT subject_totals.subject_id) as total_subjects,
+        SUM(subject_totals.subject_score) as total_score,
+        AVG(subject_totals.subject_score) as average_score
       FROM users u
       INNER JOIN profiles p ON u.id = p.user_id
       INNER JOIN student_profiles sp ON u.id = sp.user_id
-      INNER JOIN assessment_scores s ON u.id = s.student_id
-      INNER JOIN assessment_types at ON s.assessment_type_id = at.id
+      INNER JOIN (
+        SELECT 
+          s.student_id,
+          at.subject_id,
+          SUM(s.score) as subject_score
+        FROM assessment_scores s
+        INNER JOIN assessment_types at ON s.assessment_type_id = at.id
+        WHERE s.term = ?
+        AND s.academic_year = ?
+        AND s.published = TRUE
+        GROUP BY s.student_id, at.subject_id
+      ) subject_totals ON u.id = subject_totals.student_id
       WHERE sp.grade_level IN (9, 10, 11, 12)
-      AND s.term = ?
-      AND s.academic_year = ?
       GROUP BY u.id, p.full_name, sp.grade_level, sp.stream, sp.section
-      HAVING COUNT(DISTINCT at.subject_id) > 0
+      HAVING COUNT(DISTINCT subject_totals.subject_id) > 0
       ORDER BY average_score DESC
       LIMIT 10
     `;

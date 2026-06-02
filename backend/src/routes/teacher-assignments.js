@@ -9,9 +9,9 @@ router.get('/me', authenticate, authorize('teacher'), async (req, res) => {
   try {
     const teacherId = req.userId;
 
-    // Get assigned subjects
+    // Get assigned subjects (distinct to avoid duplicates from stream variations)
     const [subjects] = await pool.query(
-      'SELECT subject_id FROM teacher_subjects WHERE teacher_id = ?',
+      'SELECT DISTINCT subject_id FROM teacher_subjects WHERE teacher_id = ?',
       [teacherId]
     );
 
@@ -50,7 +50,7 @@ router.get('/:teacherId', authenticate, authorize('admin', 'registrar', 'directo
   try {
     const { teacherId } = req.params;
 
-    const [subjects] = await pool.query('SELECT subject_id FROM teacher_subjects WHERE teacher_id = ?', [teacherId]);
+    const [subjects] = await pool.query('SELECT DISTINCT subject_id FROM teacher_subjects WHERE teacher_id = ?', [teacherId]);
     const [grades] = await pool.query('SELECT grade_level FROM teacher_grades WHERE teacher_id = ?', [teacherId]);
     const [sections] = await pool.query('SELECT section FROM teacher_sections WHERE teacher_id = ?', [teacherId]);
     const [subSections] = await pool.query('SELECT sub_section FROM teacher_sub_sections WHERE teacher_id = ?', [teacherId]);

@@ -43,7 +43,17 @@ export default function AcademicHistory({ studentId }: AcademicHistoryProps) {
     setLoading(true);
     try {
       const data = await api.getAcademicHistory(parseInt(studentId));
-      setHistory(data || []);
+      // MySQL DECIMAL columns arrive as strings; coerce to numbers
+      const normalized = (data || []).map((year: YearHistory) => ({
+        ...year,
+        average_score: Number(year.average_score),
+        total_score: Number(year.total_score),
+        subjects: (year.subjects || []).map((s: SubjectResult) => ({
+          ...s,
+          total_score: Number(s.total_score),
+        })),
+      }));
+      setHistory(normalized);
     } catch (error) {
       console.error('Failed to fetch academic history:', error);
     }
