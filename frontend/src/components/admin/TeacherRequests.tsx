@@ -64,7 +64,7 @@ export default function TeacherRequests({ onUserCreated }: Props) {
       setCredentialsDialog({
         username: result.username,
         password: result.password,
-        id_number: result.id_number
+        id_number: result.staff_id || result.id_number
       });
       
       setViewingRequest(null);

@@ -35,7 +35,7 @@ router.get('/my-status', authenticate, authorize('student'), async (req, res) =>
     const [registrations] = await pool.query(
       `SELECT * FROM student_registrations 
        WHERE student_id = ? AND academic_year = ?`,
-      [req.user.id, academicYear]
+      [req.userId, academicYear]
     );
     
     if (registrations.length === 0) {
@@ -73,7 +73,7 @@ router.get('/available-courses', authenticate, authorize('student'), async (req,
       `SELECT sp.grade_level, sp.stream
        FROM student_profiles sp
        WHERE sp.user_id = ?`,
-      [req.user.id]
+      [req.userId]
     );
     
     if (students.length === 0) {
@@ -124,7 +124,7 @@ router.post('/register', authenticate, authorize('student'), [
     const [existing] = await connection.query(
       `SELECT id FROM student_registrations 
        WHERE student_id = ? AND academic_year = ? AND term = ?`,
-      [req.user.id, academicYear, term]
+      [req.userId, academicYear, term]
     );
     
     if (existing.length > 0) {
@@ -141,7 +141,7 @@ router.post('/register', authenticate, authorize('student'), [
       `INSERT INTO student_registrations 
        (student_id, academic_year, term, total_credit_hours, total_ects, status) 
        VALUES (?, ?, ?, ?, ?, 'registered')`,
-      [req.user.id, academicYear, term, totalCreditHours, totalEcts]
+      [req.userId, academicYear, term, totalCreditHours, totalEcts]
     );
     
     const registrationId = regResult.insertId;

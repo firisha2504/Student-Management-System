@@ -121,7 +121,7 @@ router.get('/me', authenticate, async (req, res) => {
     // - Fallback: use username
     const user = {
       ...req.user,
-      id_number: profile?.admission_number || profile?.staff_id || req.user.username
+      id_number: profile?.admission_number || profile?.staff_id || req.user?.username
     };
 
     res.json({

@@ -64,20 +64,25 @@ router.post('/promote-students', authenticate, authorize('admin'), [
 
     await connection.beginTransaction();
 
-    // Get all students with their grades from CURRENT year
+    // Get all students with their per-subject weighted averages from assessment_scores
     const [students] = await connection.query(`
       SELECT 
         u.id as user_id,
         p.full_name,
         sp.grade_level,
         sp.stream,
-        AVG(g.score) as average_score,
-        COUNT(g.id) as total_grades
+        COALESCE(AVG(subject_totals.subject_score), 0) as average_score
       FROM users u
       INNER JOIN user_roles ur ON u.id = ur.user_id
       INNER JOIN profiles p ON u.id = p.user_id
       INNER JOIN student_profiles sp ON u.id = sp.user_id
-      LEFT JOIN grades g ON u.id = g.student_id AND g.academic_year = ?
+      LEFT JOIN (
+        SELECT s.student_id, at.subject_id, SUM(s.score) as subject_score
+        FROM assessment_scores s
+        INNER JOIN assessment_types at ON s.assessment_type_id = at.id
+        WHERE s.academic_year = ? AND s.published = TRUE
+        GROUP BY s.student_id, at.subject_id
+      ) subject_totals ON u.id = subject_totals.student_id
       WHERE ur.role = 'student' AND sp.grade_level IS NOT NULL
       GROUP BY u.id, p.full_name, sp.grade_level, sp.stream
     `, [currentYear]);

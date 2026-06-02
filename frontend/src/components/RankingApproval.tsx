@@ -55,7 +55,10 @@ export default function RankingApproval() {
       });
 
       if (data.rankings) {
-        setRankings(data.rankings);
+        setRankings(data.rankings.map((r: RankingEntry) => ({
+          ...r,
+          average_score: Number(r.average_score),
+        })));
       }
 
       // Check approval status
@@ -181,9 +184,8 @@ export default function RankingApproval() {
                   <SelectValue placeholder="Stream" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Science">Science</SelectItem>
-                  <SelectItem value="Arts">Arts</SelectItem>
-                  <SelectItem value="Commerce">Commerce</SelectItem>
+                  <SelectItem value="natural">Natural</SelectItem>
+                  <SelectItem value="social">Social</SelectItem>
                 </SelectContent>
               </Select>
             )}

@@ -106,40 +106,54 @@ router.post('/:id/approve', authenticate, authorize('admin'), async (req, res) =
     
     // Generate ID number
     const [lastTeacher] = await connection.query(
-      "SELECT id_number FROM users WHERE role = 'teacher' AND id_number LIKE 'MJT%' ORDER BY id_number DESC LIMIT 1"
+      "SELECT staff_id FROM profiles WHERE staff_id LIKE 'MJT%' ORDER BY staff_id DESC LIMIT 1"
     );
     
     let nextNumber = 1;
     if (lastTeacher.length > 0) {
-      const lastNum = parseInt(lastTeacher[0].id_number.replace('MJT', ''));
+      const lastNum = parseInt(lastTeacher[0].staff_id.replace('MJT', ''));
       nextNumber = lastNum + 1;
     }
     
-    const idNumber = `MJT${String(nextNumber).padStart(3, '0')}`;
+    const staffId = `MJT${String(nextNumber).padStart(3, '0')}`;
     
     // Generate username from full name and ID
     const nameParts = request.full_name.toLowerCase().trim().split(/\s+/);
     const firstName = nameParts[0] || 'teacher';
     const lastName = nameParts[nameParts.length - 1] || 'user';
-    const username = `${firstName}.${lastName}.${idNumber}`;
+    const username = `${firstName}.${lastName}.${staffId}`;
     
     // Generate password
-    const password = `pass${idNumber}`;
+    const password = `pass${staffId}`;
     
-    // Create user account
+    // Hash password
+    const bcrypt = await import('bcryptjs');
+    const passwordHash = await bcrypt.default.hash(password, 10);
+    
+    // Create user account with correct schema
     const [userResult] = await connection.query(
-      `INSERT INTO users (username, password, role, id_number, is_active) 
-       VALUES (?, ?, 'teacher', ?, TRUE)`,
-      [username, password, idNumber]
+      `INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)`,
+      [username, request.email, passwordHash]
     );
     
     const userId = userResult.insertId;
     
-    // Create profile
+    // Create role in user_roles table
     await connection.query(
-      `INSERT INTO profiles (user_id, full_name, email, phone) 
-       VALUES (?, ?, ?, ?)`,
-      [userId, request.full_name, request.email, request.phone]
+      `INSERT INTO user_roles (user_id, role) VALUES (?, 'teacher')`,
+      [userId]
+    );
+    
+    // Create profile with staff_id
+    await connection.query(
+      `INSERT INTO profiles (user_id, full_name, phone, staff_id) VALUES (?, ?, ?, ?)`,
+      [userId, request.full_name, request.phone || null, staffId]
+    );
+    
+    // Log credentials
+    await connection.query(
+      `INSERT INTO credentials_log (user_id, full_name, username, password, role) VALUES (?, ?, ?, ?, 'teacher')`,
+      [userId, request.full_name, username, password]
     );
     
     // Update request status
@@ -147,7 +161,7 @@ router.post('/:id/approve', authenticate, authorize('admin'), async (req, res) =
       `UPDATE teacher_requests 
        SET status = 'approved', reviewed_at = NOW(), reviewed_by = ? 
        WHERE id = ?`,
-      [req.user.userId, requestId]
+      [req.userId, requestId]
     );
     
     await connection.commit();
@@ -156,7 +170,7 @@ router.post('/:id/approve', authenticate, authorize('admin'), async (req, res) =
       message: 'Teacher account created successfully',
       username,
       password,
-      id_number: idNumber
+      staff_id: staffId
     });
     
   } catch (error) {
@@ -177,7 +191,7 @@ router.post('/:id/reject', authenticate, authorize('admin'), async (req, res) =>
       `UPDATE teacher_requests 
        SET status = 'rejected', reviewed_at = NOW(), reviewed_by = ? 
        WHERE id = ? AND status = 'pending'`,
-      [req.user.userId, requestId]
+      [req.userId, requestId]
     );
     
     if (result.affectedRows === 0) {

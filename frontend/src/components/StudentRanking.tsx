@@ -34,7 +34,13 @@ export default function StudentRanking() {
           stream: profile.stream || undefined
         });
         
-        setRankingData(data);
+        setRankingData({
+          ...data,
+          myRank: data.myRank ? {
+            ...data.myRank,
+            average_score: Number(data.myRank.average_score),
+          } : undefined,
+        });
       } catch (err) {
         console.error("Failed to load rankings:", err);
       }

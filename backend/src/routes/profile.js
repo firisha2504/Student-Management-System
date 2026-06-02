@@ -22,7 +22,7 @@ const storage = multer.diskStorage({
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, req.user.id + '-' + uniqueSuffix + path.extname(file.originalname));
+    cb(null, req.userId + '-' + uniqueSuffix + path.extname(file.originalname));
   }
 });
 
@@ -47,7 +47,7 @@ router.get('/me', authenticate, async (req, res) => {
   try {
     const [profiles] = await pool.query(
       'SELECT * FROM profiles WHERE user_id = ?',
-      [req.user.id]
+      [req.userId]
     );
 
     if (profiles.length === 0) {
@@ -94,7 +94,7 @@ router.patch('/me', authenticate, [
 
     if (Object.keys(profileUpdates).length > 0) {
       const setClause = Object.keys(profileUpdates).map(key => `${key} = ?`).join(', ');
-      const values = [...Object.values(profileUpdates), req.user.id];
+      const values = [...Object.values(profileUpdates), req.userId];
       await connection.query(
         `UPDATE profiles SET ${setClause} WHERE user_id = ?`,
         values
@@ -110,7 +110,7 @@ router.patch('/me', authenticate, [
 
       if (Object.keys(studentUpdates).length > 0) {
         const setClause = Object.keys(studentUpdates).map(key => `${key} = ?`).join(', ');
-        const values = [...Object.values(studentUpdates), req.user.id];
+        const values = [...Object.values(studentUpdates), req.userId];
         await connection.query(
           `UPDATE student_profiles SET ${setClause} WHERE user_id = ?`,
           values
@@ -139,7 +139,7 @@ router.post('/me/image', authenticate, upload.single('image'), async (req, res) 
     // Get old image path to delete it
     const [profiles] = await pool.query(
       'SELECT profile_image FROM profiles WHERE user_id = ?',
-      [req.user.id]
+      [req.userId]
     );
 
     const oldImage = profiles[0]?.profile_image;
@@ -148,7 +148,7 @@ router.post('/me/image', authenticate, upload.single('image'), async (req, res) 
     const imagePath = `/uploads/profiles/${req.file.filename}`;
     await pool.query(
       'UPDATE profiles SET profile_image = ? WHERE user_id = ?',
-      [imagePath, req.user.id]
+      [imagePath, req.userId]
     );
 
     // Delete old image file if it exists
@@ -179,7 +179,7 @@ router.delete('/me/image', authenticate, async (req, res) => {
     // Get current image path
     const [profiles] = await pool.query(
       'SELECT profile_image FROM profiles WHERE user_id = ?',
-      [req.user.id]
+      [req.userId]
     );
 
     const imagePath = profiles[0]?.profile_image;
@@ -191,7 +191,7 @@ router.delete('/me/image', authenticate, async (req, res) => {
     // Update database
     await pool.query(
       'UPDATE profiles SET profile_image = NULL WHERE user_id = ?',
-      [req.user.id]
+      [req.userId]
     );
 
     // Delete file
@@ -223,7 +223,7 @@ router.post('/me/change-password', authenticate, [
     // Get current password hash
     const [users] = await pool.query(
       'SELECT password_hash FROM users WHERE id = ?',
-      [req.user.id]
+      [req.userId]
     );
 
     if (users.length === 0) {
@@ -240,7 +240,7 @@ router.post('/me/change-password', authenticate, [
     const newPasswordHash = await bcrypt.hash(newPassword, 10);
     await pool.query(
       'UPDATE users SET password_hash = ? WHERE id = ?',
-      [newPasswordHash, req.user.id]
+      [newPasswordHash, req.userId]
     );
 
     res.json({ message: 'Password changed successfully' });
@@ -263,7 +263,7 @@ router.post('/me/change-username', authenticate, [
     // Check if user has permission
     const [roles] = await pool.query(
       'SELECT role FROM user_roles WHERE user_id = ?',
-      [req.user.id]
+      [req.userId]
     );
 
     const userRole = roles[0]?.role;
@@ -276,7 +276,7 @@ router.post('/me/change-username', authenticate, [
     // Check if username already exists
     const [existing] = await pool.query(
       'SELECT id FROM users WHERE username = ? AND id != ?',
-      [newUsername, req.user.id]
+      [newUsername, req.userId]
     );
 
     if (existing.length > 0) {
@@ -286,13 +286,13 @@ router.post('/me/change-username', authenticate, [
     // Update username
     await pool.query(
       'UPDATE users SET username = ? WHERE id = ?',
-      [newUsername, req.user.id]
+      [newUsername, req.userId]
     );
 
     // Update credentials log if exists
     await pool.query(
       'UPDATE credentials_log SET username = ? WHERE user_id = ?',
-      [newUsername, req.user.id]
+      [newUsername, req.userId]
     );
 
     res.json({ message: 'Username changed successfully', newUsername });
