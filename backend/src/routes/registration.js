@@ -68,7 +68,7 @@ router.get('/my-status', authenticate, authorize('student'), async (req, res) =>
 // Get available courses for student's grade and stream
 router.get('/available-courses', authenticate, authorize('student'), async (req, res) => {
   try {
-    // Get student's grade and stream
+    // Get student's current grade and stream
     const [students] = await pool.query(
       `SELECT sp.grade_level, sp.stream
        FROM student_profiles sp
@@ -81,11 +81,28 @@ router.get('/available-courses', authenticate, authorize('student'), async (req,
     }
     
     const { grade_level, stream } = students[0];
-    
-    // Get all subjects (in a real system, you'd filter by grade/stream)
-    const [subjects] = await pool.query(
-      `SELECT * FROM subjects ORDER BY subject_name`
-    );
+
+    if (!grade_level) {
+      return res.json({ subjects: [], grade_level: null, stream });
+    }
+
+    // Get subjects for this student's CURRENT grade and stream
+    // (grade is already updated after promotion, so this is correct)
+    let subjectQuery = `
+      SELECT * FROM subjects WHERE grade_level = ?
+    `;
+    const subjectParams = [grade_level];
+
+    if (grade_level >= 11 && stream) {
+      subjectQuery += " AND (stream = ? OR stream = 'Common' OR stream IS NULL)";
+      subjectParams.push(stream);
+    } else {
+      subjectQuery += " AND (stream = 'Common' OR stream IS NULL)";
+    }
+
+    subjectQuery += ' ORDER BY subject_name';
+
+    const [subjects] = await pool.query(subjectQuery, subjectParams);
     
     res.json({ subjects, grade_level, stream });
   } catch (error) {

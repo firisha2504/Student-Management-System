@@ -100,9 +100,8 @@ router.post('/archive', authenticate, authorize('registrar', 'admin'), [
     for (const student of students) {
       console.log(`Processing student: ${student.full_name} (Grade ${student.grade_level})`);
       
-      // Get all subjects where the student has at least one published score.
-      // We sum only the assessments the student actually completed (published),
-      // so a missing component simply contributes 0 rather than excluding the subject.
+      // Get all subjects where the student has published scores for this academic year.
+      // Sum across BOTH semesters so the archived total represents the full year.
       const [subjectScores] = await connection.query(`
         SELECT 
           at.subject_id,
@@ -118,6 +117,7 @@ router.post('/archive', authenticate, authorize('registrar', 'admin'), [
           AND (at.stream IS NULL OR at.stream = '' OR at.stream = ?)
           AND (at.sub_section IS NULL OR at.sub_section = ?)
         GROUP BY at.subject_id, s.subject_name
+        HAVING weighted_score IS NOT NULL
       `, [
         student.user_id, 
         academic_year, 

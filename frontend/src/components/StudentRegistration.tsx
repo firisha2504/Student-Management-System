@@ -19,6 +19,7 @@ interface Subject {
 
 interface RegistrationStatus {
   registered: boolean;
+  academicYear?: string;
   registration?: {
     id: number;
     academic_year: string;
@@ -35,82 +36,8 @@ export default function StudentRegistration() {
   const [loading, setLoading] = useState(true);
   const [registering, setRegistering] = useState(false);
   const [registrationStatus, setRegistrationStatus] = useState<RegistrationStatus | null>(null);
-
-  const getCurrentAcademicYear = () => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth(); // 0-11
-    // Academic year starts in September (month 8)
-    return month >= 8 ? `${year}-${year + 1}` : `${year - 1}-${year}`;
-  };
-
-  const currentAcademicYear = getCurrentAcademicYear();
-
-  // Check if registration is needed
-  const needsRegistration = () => {
-    // Grade 12 students never need registration
-    if (profile?.grade_level === 12) {
-      return false;
-    }
-
-    // If no registration status, they need to register
-    if (!registrationStatus?.registered) {
-      return true;
-    }
-
-    // If registered for a different academic year, they need to register for current year
-    if (registrationStatus.registration?.academic_year !== currentAcademicYear) {
-      return true;
-    }
-
-    // Already registered for current academic year
-    return false;
-  };
-
-  // Grade 12 students don't need registration
-  if (profile?.grade_level === 12) {
-    return (
-      <div className="space-y-6">
-        <Card className="border-0 shadow-md overflow-hidden">
-          <div className="gradient-hero p-6 sm:p-8 text-white">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="bg-white/10 rounded-xl p-2">
-                <CheckCircle2 className="h-6 w-6" />
-              </div>
-              <div>
-                <h2 className="text-xl font-extrabold">Registration Complete</h2>
-                <p className="text-white/60 text-sm">
-                  Grade 12 · Final Year
-                </p>
-              </div>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="border-0 shadow-md">
-          <CardContent className="p-8 text-center">
-            <div className="flex flex-col items-center gap-4">
-              <div className="bg-emerald-500/10 rounded-full p-4">
-                <CheckCircle2 className="h-12 w-12 text-emerald-600 dark:text-emerald-400" />
-              </div>
-              <div className="space-y-2">
-                <h3 className="text-xl font-bold text-foreground">No Registration Required</h3>
-                <p className="text-muted-foreground max-w-md">
-                  As a Grade 12 student, you are already registered for your final year courses. 
-                  Focus on your studies and prepare for your final exams!
-                </p>
-              </div>
-              <div className="bg-muted/50 rounded-xl p-4 mt-4">
-                <p className="text-sm text-muted-foreground">
-                  <strong>Good luck with your final year!</strong> 🎓
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  const [currentAcademicYear, setCurrentAcademicYear] = useState<string>("");
+  const [registrationOpen, setRegistrationOpen] = useState<any>(null);
 
   useEffect(() => {
     if (!user || !profile) return;
@@ -119,20 +46,23 @@ export default function StudentRegistration() {
       try {
         setLoading(true);
 
-        // Check registration status
-        const statusData = await api.getRegistrationStatus();
+        // Always get the current academic year from the system (not hardcoded)
+        const [yearData, statusData, openStatus] = await Promise.all([
+          api.getCurrentAcademicYear(),
+          api.getRegistrationStatus(),
+          api.isRegistrationOpen(),
+        ]);
+
+        const sysYear = yearData?.academic_year || "";
+        setCurrentAcademicYear(sysYear);
         setRegistrationStatus(statusData);
+        setRegistrationOpen(openStatus);
 
-        // Fetch available courses for student's grade
-        if (profile.grade_level) {
-          const filters: any = { grade_level: profile.grade_level };
-          if (profile.grade_level >= 11 && profile.stream) {
-            filters.stream = profile.stream;
-          }
+        // Fetch subjects for the student's current grade/stream
+        // The backend already returns the correct grade's subjects
+        const coursesData = await api.getAvailableCourses();
+        setSubjects(coursesData.subjects || []);
 
-          const subjectsData = await api.getAllSubjects(filters);
-          setSubjects(subjectsData);
-        }
       } catch (error) {
         console.error("Error fetching registration data:", error);
         toast({
@@ -146,15 +76,12 @@ export default function StudentRegistration() {
     };
 
     fetchData();
-  }, [user, profile, toast]);
+  }, [user, profile]);
 
   const handleRegister = async () => {
     if (!user || !profile || subjects.length === 0) return;
-
     setRegistering(true);
-
     try {
-      // Prepare courses for registration
       const courses = subjects.map(subject => ({
         subject_id: subject.id,
         credit_hours: subject.credit_hours,
@@ -164,16 +91,18 @@ export default function StudentRegistration() {
 
       await api.registerCourses(courses);
 
-      // Refresh registration status
-      const statusData = await api.getRegistrationStatus();
+      const [statusData, openStatus] = await Promise.all([
+        api.getRegistrationStatus(),
+        api.isRegistrationOpen(),
+      ]);
       setRegistrationStatus(statusData);
+      setRegistrationOpen(openStatus);
 
       toast({
         title: "Registered Successfully!",
         description: `You are now registered for ${currentAcademicYear}.`,
       });
     } catch (error: any) {
-      console.error("Registration error:", error);
       toast({
         title: "Registration failed",
         description: error.message || "Failed to register for courses",
@@ -188,9 +117,10 @@ export default function StudentRegistration() {
     return <p className="text-muted-foreground p-6">Loading...</p>;
   }
 
-  // Check if student needs registration
-  if (!needsRegistration()) {
-    const registration = registrationStatus?.registration;
+  // Already registered for current year
+  if (registrationStatus?.registered &&
+      registrationStatus.registration?.academic_year === currentAcademicYear) {
+    const reg = registrationStatus.registration;
     return (
       <div className="space-y-6">
         <Card className="border-0 shadow-md overflow-hidden">
@@ -209,7 +139,6 @@ export default function StudentRegistration() {
             </div>
           </div>
         </Card>
-
         <Card className="border-0 shadow-md">
           <CardContent className="p-8 text-center">
             <div className="flex flex-col items-center gap-4">
@@ -219,19 +148,17 @@ export default function StudentRegistration() {
               <div className="space-y-2">
                 <h3 className="text-xl font-bold text-foreground">Registration Complete</h3>
                 <p className="text-muted-foreground max-w-md">
-                  You are already registered for the {currentAcademicYear} academic year. 
+                  You are already registered for the {currentAcademicYear} academic year.
                   Registration will be available again when the new academic year begins.
                 </p>
               </div>
-              {registration && (
+              {reg && (
                 <div className="bg-muted/50 rounded-xl p-4 mt-4 space-y-2">
-                  <p className="text-sm text-muted-foreground">
-                    <strong>Registration Details:</strong>
-                  </p>
+                  <p className="text-sm text-muted-foreground"><strong>Registration Details:</strong></p>
                   <div className="flex gap-4 text-xs text-muted-foreground">
-                    <span>Registered: {new Date(registration.registration_date).toLocaleDateString()}</span>
-                    <span>Credit Hours: {registration.total_credit_hours}</span>
-                    <span>ECTS: {registration.total_ects}</span>
+                    <span>Registered: {new Date(reg.registration_date).toLocaleDateString()}</span>
+                    <span>Credit Hours: {reg.total_credit_hours}</span>
+                    <span>ECTS: {reg.total_ects}</span>
                   </div>
                 </div>
               )}
@@ -242,30 +169,7 @@ export default function StudentRegistration() {
     );
   }
 
-  // Check if registration is open
-  const [registrationOpen, setRegistrationOpen] = useState<any>(null);
-  const [checkingRegistrationStatus, setCheckingRegistrationStatus] = useState(true);
-
-  useEffect(() => {
-    const checkRegistrationOpen = async () => {
-      try {
-        const openStatus = await api.isRegistrationOpen();
-        setRegistrationOpen(openStatus);
-      } catch (error) {
-        console.error('Failed to check registration status:', error);
-      } finally {
-        setCheckingRegistrationStatus(false);
-      }
-    };
-    
-    checkRegistrationOpen();
-  }, []);
-
-  if (checkingRegistrationStatus) {
-    return <p className="text-muted-foreground p-6">Checking registration status...</p>;
-  }
-
-  // Registration is closed
+  // Registration closed
   if (!registrationOpen?.isOpen) {
     return (
       <div className="space-y-6">
@@ -277,14 +181,11 @@ export default function StudentRegistration() {
               </div>
               <div>
                 <h2 className="text-xl font-extrabold">Registration Closed</h2>
-                <p className="text-white/60 text-sm">
-                  Academic Year Registration
-                </p>
+                <p className="text-white/60 text-sm">Academic Year Registration</p>
               </div>
             </div>
           </div>
         </Card>
-
         <Card className="border-0 shadow-md">
           <CardContent className="p-8 text-center">
             <div className="flex flex-col items-center gap-4">
@@ -294,19 +195,16 @@ export default function StudentRegistration() {
               <div className="space-y-2">
                 <h3 className="text-xl font-bold text-foreground">Registration Period Closed</h3>
                 <p className="text-muted-foreground max-w-md">
-                  {!registrationOpen?.manuallyOpen 
+                  {!registrationOpen?.manuallyOpen
                     ? "Registration has been closed by the registrar."
-                    : !registrationOpen?.isInPeriod 
-                      ? "Registration period has ended."
-                      : "Registration is currently not available."
-                  }
+                    : !registrationOpen?.isInPeriod
+                    ? "Registration period has ended."
+                    : "Registration is currently not available."}
                 </p>
               </div>
               {registrationOpen?.startDate && registrationOpen?.endDate && (
                 <div className="bg-muted/50 rounded-xl p-4 mt-4 space-y-2">
-                  <p className="text-sm text-muted-foreground">
-                    <strong>Registration Period:</strong>
-                  </p>
+                  <p className="text-sm text-muted-foreground"><strong>Registration Period:</strong></p>
                   <div className="text-xs text-muted-foreground">
                     <p>Start: {new Date(registrationOpen.startDate).toLocaleDateString()}</p>
                     <p>End: {new Date(registrationOpen.endDate).toLocaleDateString()}</p>
@@ -323,12 +221,10 @@ export default function StudentRegistration() {
     );
   }
 
-  const isRegistered = registrationStatus?.registered || false;
-  const registration = registrationStatus?.registration;
-
+  // Registration form
   return (
     <div className="space-y-6">
-      {/* Registration Header */}
+      {/* Header */}
       <Card className="border-0 shadow-md overflow-hidden">
         <div className="gradient-hero p-6 sm:p-8 text-white">
           <div className="flex items-center gap-3 mb-2">
@@ -336,52 +232,46 @@ export default function StudentRegistration() {
               <ClipboardList className="h-6 w-6" />
             </div>
             <div>
-              <h2 className="text-xl font-extrabold">Course Registration</h2>
+              <h2 className="text-xl font-extrabold">Student Registration</h2>
               <p className="text-white/60 text-sm">
-                Academic Year {currentAcademicYear} · Grade {profile?.grade_level}
-                {profile?.stream
-                  ? ` · ${profile.stream.charAt(0).toUpperCase() + profile.stream.slice(1)}`
-                  : ""}
+                Academic Year {currentAcademicYear}
               </p>
             </div>
           </div>
         </div>
       </Card>
 
-      {/* Registration Slip */}
+      {/* Confirmation notice */}
       <Card className="border-0 shadow-md">
         <CardContent className="p-6">
-          {/* Student Info */}
-          <div className="grid grid-cols-2 gap-4 mb-6 text-sm">
+          <div className="flex items-start gap-3 mb-6 p-4 rounded-xl bg-primary/5 border border-primary/20">
+            <ClipboardList className="h-5 w-5 text-primary mt-0.5 shrink-0" />
             <div>
-              <span className="text-muted-foreground">Name:</span>{" "}
-              <span className="font-semibold text-foreground">{profile?.full_name}</span>
-            </div>
-            <div>
-              <span className="text-muted-foreground">Username:</span>{" "}
-              <span className="font-semibold text-foreground">{user?.username}</span>
-            </div>
-            <div>
-              <span className="text-muted-foreground">Grade:</span>{" "}
-              <span className="font-semibold text-foreground">{profile?.grade_level}</span>
-            </div>
-            <div>
-              <span className="text-muted-foreground">Stream:</span>{" "}
-              <span className="font-semibold text-foreground capitalize">
-                {profile?.stream || "—"}
-              </span>
+              <p className="font-semibold text-sm text-foreground">Confirm Your Registration</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                You have been promoted to the next grade level. Please confirm your registration for the
+                academic year {currentAcademicYear} by clicking the button below.
+              </p>
+              <div className="flex gap-6 mt-3 text-xs text-muted-foreground">
+                <span>Student Name: <strong className="text-foreground">{profile?.full_name}</strong></span>
+                <span>Student ID: <strong className="text-foreground">{profile?.admission_number}</strong></span>
+              </div>
             </div>
           </div>
 
-          {/* Subjects Table */}
+          {/* Subjects table */}
+          <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
+            <ClipboardList className="h-4 w-4 text-primary" />
+            Available Courses for Your Grade
+          </h3>
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/50">
                 <TableHead className="font-semibold w-12">#</TableHead>
-                <TableHead className="font-semibold">Subject</TableHead>
-                <TableHead className="font-semibold">Code</TableHead>
-                <TableHead className="font-semibold text-center">Credit Hrs</TableHead>
-                <TableHead className="font-semibold text-center">ECTS</TableHead>
+                <TableHead className="font-semibold">Course Title</TableHead>
+                <TableHead className="font-semibold">Course Code</TableHead>
+                <TableHead className="font-semibold text-center">Cr.Hr</TableHead>
+                <TableHead className="font-semibold">Instructor</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -389,83 +279,54 @@ export default function StudentRegistration() {
                 <TableRow key={sub.id}>
                   <TableCell className="text-sm">{idx + 1}</TableCell>
                   <TableCell className="text-sm font-medium">{sub.subject_name}</TableCell>
-                  <TableCell className="text-sm">{sub.subject_code}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{sub.subject_code}</TableCell>
                   <TableCell className="text-sm text-center">{sub.credit_hours}</TableCell>
-                  <TableCell className="text-sm text-center">{sub.ects}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">Teacher</TableCell>
                 </TableRow>
               ))}
               {subjects.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                    No subjects found for your grade level.
+                    No subjects found for your grade level. Contact the admin.
                   </TableCell>
                 </TableRow>
               )}
               <TableRow className="bg-muted/30 font-semibold">
-                <TableCell colSpan={2} className="text-right text-sm">
-                  Total
-                </TableCell>
-                <TableCell className="text-sm font-bold">{subjects.length} subjects</TableCell>
+                <TableCell colSpan={3} className="text-right text-sm">Total:</TableCell>
                 <TableCell className="text-sm text-center font-bold">
-                  {subjects.reduce((sum, s) => sum + s.credit_hours, 0)} hrs
+                  {subjects.reduce((sum, s) => sum + s.credit_hours, 0)} Credit Hours
                 </TableCell>
-                <TableCell className="text-sm text-center font-bold">
-                  {subjects.reduce((sum, s) => sum + s.ects, 0)} ECTS
-                </TableCell>
+                <TableCell />
               </TableRow>
             </TableBody>
           </Table>
 
-          {/* Register Button / Success State */}
-          <div className="mt-6 flex flex-col items-center gap-3">
-            {isRegistered ? (
-              <div className="flex flex-col items-center gap-2">
-                <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
-                  <CheckCircle2 className="h-6 w-6" />
-                  <span className="text-lg font-extrabold uppercase">Registered Successfully</span>
-                </div>
-                {registration?.registration_date && (
-                  <p className="text-xs text-muted-foreground">
-                    Registered on{" "}
-                    {new Date(registration.registration_date).toLocaleDateString("en-US", {
-                      year: "numeric",
-                      month: "long",
-                      day: "numeric",
-                    })}
-                  </p>
-                )}
-                <div className="flex gap-4 text-xs text-muted-foreground mt-2">
-                  <span>
-                    Total Credit Hours: <strong>{registration?.total_credit_hours || 0}</strong>
-                  </span>
-                  <span>
-                    Total ECTS: <strong>{registration?.total_ects || 0}</strong>
-                  </span>
-                </div>
-              </div>
-            ) : (
-              <Button
-                onClick={handleRegister}
-                disabled={registering || subjects.length === 0}
-                size="lg"
-                className="gradient-primary text-white font-bold px-8"
-              >
-                {registering ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Registering...
-                  </>
-                ) : (
-                  "Register for This Year"
-                )}
-              </Button>
-            )}
+          {/* Important notice */}
+          <div className="mt-4 p-3 rounded-xl bg-muted/30 border border-border/50">
+            <p className="text-xs font-semibold text-foreground mb-1">Important Notice</p>
+            <p className="text-xs text-muted-foreground">
+              By clicking "Register", you confirm your attendance for the academic year {currentAcademicYear}.
+              If you do not register, the system will mark you as not attending this year.
+            </p>
           </div>
 
-          {/* Footer note */}
-          <p className="text-xs text-muted-foreground mt-4 text-center italic">
-            This registration slip should not be considered complete without advisor verification.
-          </p>
+          <div className="mt-6 flex justify-center">
+            <Button
+              onClick={handleRegister}
+              disabled={registering || subjects.length === 0}
+              size="lg"
+              className="gradient-primary text-white font-bold px-10"
+            >
+              {registering ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Registering...
+                </>
+              ) : (
+                "Register"
+              )}
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>

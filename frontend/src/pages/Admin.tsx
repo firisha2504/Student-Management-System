@@ -791,6 +791,17 @@ export default function Admin() {
       case "credentials": {
         const credRoles = ["all", "student", "teacher", "registrar", "director", "parent"] as const;
         const filteredCreds = credFilterRole === "all" ? credentialsLog : credentialsLog.filter(c => c.role === credFilterRole);
+
+        // For students, group by grade level
+        const isStudentView = credFilterRole === "student";
+        const studentsByGrade: Record<string, typeof filteredCreds> = {};
+        if (isStudentView) {
+          filteredCreds.forEach((c: any) => {
+            const key = c.grade_level ? `Grade ${c.grade_level}` : "Unassigned";
+            if (!studentsByGrade[key]) studentsByGrade[key] = [];
+            studentsByGrade[key].push(c);
+          });
+        }
         
         return (
           <div className="space-y-6">
@@ -815,56 +826,112 @@ export default function Admin() {
 
             {loadingCredentials ? (
               <p className="text-center text-muted-foreground">Loading...</p>
+            ) : filteredCreds.length === 0 ? (
+              <Card className="border-0 shadow-sm">
+                <CardContent className="p-6 text-center text-muted-foreground">No credentials for this role</CardContent>
+              </Card>
+            ) : isStudentView ? (
+              // Students grouped by grade
+              <div className="space-y-4">
+                {Object.entries(studentsByGrade)
+                  .sort((a, b) => {
+                    const numA = parseInt(a[0].replace("Grade ", "")) || 999;
+                    const numB = parseInt(b[0].replace("Grade ", "")) || 999;
+                    return numA - numB;
+                  })
+                  .map(([gradeLabel, creds]) => (
+                    <Card key={gradeLabel} className="border-0 shadow-sm overflow-hidden">
+                      <div className="px-4 py-2.5 bg-muted/40 border-b border-border/50 flex items-center justify-between">
+                        <span className="font-semibold text-sm text-foreground">{gradeLabel}</span>
+                        <span className="text-xs text-muted-foreground">{creds.length} student{creds.length !== 1 ? "s" : ""}</span>
+                      </div>
+                      <CardContent className="p-0">
+                        <div className="overflow-x-auto">
+                          <Table>
+                            <TableHeader>
+                              <TableRow className="bg-muted/20">
+                                <TableHead>Name</TableHead>
+                                <TableHead>Username</TableHead>
+                                <TableHead>Password</TableHead>
+                                <TableHead>Created</TableHead>
+                                <TableHead>Copy</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {creds.map((cred: any) => (
+                                <TableRow key={cred.id} className="hover:bg-muted/30">
+                                  <TableCell className="font-semibold">{cred.full_name}</TableCell>
+                                  <TableCell className="font-mono text-sm">{cred.username}</TableCell>
+                                  <TableCell className="font-mono text-sm">{cred.password}</TableCell>
+                                  <TableCell className="text-sm text-muted-foreground">
+                                    {new Date(cred.created_at).toLocaleDateString()}
+                                  </TableCell>
+                                  <TableCell>
+                                    <Button 
+                                      variant="ghost" size="icon" className="h-8 w-8" 
+                                      onClick={() => copyCredential(cred)}
+                                    >
+                                      {copiedCredId === cred.id ? (
+                                        <Check className="h-4 w-4 text-accent" />
+                                      ) : (
+                                        <Copy className="h-4 w-4 text-muted-foreground" />
+                                      )}
+                                    </Button>
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+              </div>
             ) : (
+              // Non-student roles: flat table
               <Card className="border-0 shadow-sm overflow-hidden">
                 <CardContent className="p-0">
-                  {filteredCreds.length === 0 ? (
-                    <p className="p-6 text-center text-muted-foreground">No credentials for this role</p>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <Table>
-                        <TableHeader>
-                          <TableRow className="bg-muted/20">
-                            <TableHead>Name</TableHead>
-                            <TableHead>Username</TableHead>
-                            <TableHead>Password</TableHead>
-                            <TableHead>Role</TableHead>
-                            <TableHead>Created</TableHead>
-                            <TableHead>Copy</TableHead>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-muted/20">
+                          <TableHead>Name</TableHead>
+                          <TableHead>Username</TableHead>
+                          <TableHead>Password</TableHead>
+                          <TableHead>Role</TableHead>
+                          <TableHead>Created</TableHead>
+                          <TableHead>Copy</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredCreds.map(cred => (
+                          <TableRow key={cred.id} className="hover:bg-muted/30">
+                            <TableCell className="font-semibold">{cred.full_name}</TableCell>
+                            <TableCell className="font-mono text-sm">{cred.username}</TableCell>
+                            <TableCell className="font-mono text-sm">{cred.password}</TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className="text-xs capitalize">{cred.role}</Badge>
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {new Date(cred.created_at).toLocaleDateString()}
+                            </TableCell>
+                            <TableCell>
+                              <Button 
+                                variant="ghost" size="icon" className="h-8 w-8" 
+                                onClick={() => copyCredential(cred)}
+                              >
+                                {copiedCredId === cred.id ? (
+                                  <Check className="h-4 w-4 text-accent" />
+                                ) : (
+                                  <Copy className="h-4 w-4 text-muted-foreground" />
+                                )}
+                              </Button>
+                            </TableCell>
                           </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {filteredCreds.map(cred => (
-                            <TableRow key={cred.id} className="hover:bg-muted/30">
-                              <TableCell className="font-semibold">{cred.full_name}</TableCell>
-                              <TableCell className="font-mono text-sm">{cred.username}</TableCell>
-                              <TableCell className="font-mono text-sm">{cred.password}</TableCell>
-                              <TableCell>
-                                <Badge variant="outline" className="text-xs capitalize">{cred.role}</Badge>
-                              </TableCell>
-                              <TableCell className="text-sm text-muted-foreground">
-                                {new Date(cred.created_at).toLocaleDateString()}
-                              </TableCell>
-                              <TableCell>
-                                <Button 
-                                  variant="ghost" 
-                                  size="icon" 
-                                  className="h-8 w-8" 
-                                  onClick={() => copyCredential(cred)}
-                                >
-                                  {copiedCredId === cred.id ? (
-                                    <Check className="h-4 w-4 text-accent" />
-                                  ) : (
-                                    <Copy className="h-4 w-4 text-muted-foreground" />
-                                  )}
-                                </Button>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  )}
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </CardContent>
               </Card>
             )}

@@ -196,9 +196,13 @@ router.get('/credentials-log', authenticate, authorize('admin'), async (req, res
         cl.username,
         cl.password,
         cl.role,
-        cl.created_at
+        cl.created_at,
+        sp.grade_level,
+        sp.stream,
+        sp.sub_section
       FROM credentials_log cl
-      ORDER BY cl.created_at DESC
+      LEFT JOIN student_profiles sp ON cl.user_id = sp.user_id AND cl.role = 'student'
+      ORDER BY cl.role, sp.grade_level, sp.sub_section, cl.full_name
     `);
 
     res.json(credentials);
