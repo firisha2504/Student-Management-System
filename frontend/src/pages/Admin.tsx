@@ -15,7 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import {
   Shield, UserPlus, Lock, Users, Search,
-  ChevronLeft, ChevronRight, Settings, Menu, ImageIcon, Upload, Key, Copy, Check, ArrowUpCircle, ClipboardList, Trash2, BookOpen, Edit, Plus
+  ChevronLeft, ChevronRight, ChevronDown, Settings, Menu, ImageIcon, Upload, Key, Copy, Check, ArrowUpCircle, ClipboardList, Trash2, BookOpen, Edit, Plus
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import SuccessModal from "@/components/SuccessModal";
@@ -98,6 +98,8 @@ export default function Admin() {
   }[]>([]);
   const [loadingCredentials, setLoadingCredentials] = useState(false);
   const [copiedCredId, setCopiedCredId] = useState<string | null>(null);
+  const [collapsedCredGrades, setCollapsedCredGrades] = useState<Set<string>>(new Set());
+  const [collapsedCredSubSections, setCollapsedCredSubSections] = useState<Set<string>>(new Set());
 
   // Filters
   const [searchQuery, setSearchQuery] = useState("");
@@ -792,17 +794,74 @@ export default function Admin() {
         const credRoles = ["all", "student", "teacher", "registrar", "director", "parent"] as const;
         const filteredCreds = credFilterRole === "all" ? credentialsLog : credentialsLog.filter(c => c.role === credFilterRole);
 
-        // For students, group by grade level
         const isStudentView = credFilterRole === "student";
-        const studentsByGrade: Record<string, typeof filteredCreds> = {};
+
+        // Build two-level hierarchy: grade → sub_section → students
+        // Each entry sorted: grade asc, sub_section asc, name asc
+        type CredEntry = typeof credentialsLog[0] & { grade_level?: number; sub_section?: string };
+        const gradeMap = new Map<string, Map<string, CredEntry[]>>();
         if (isStudentView) {
-          filteredCreds.forEach((c: any) => {
-            const key = c.grade_level ? `Grade ${c.grade_level}` : "Unassigned";
-            if (!studentsByGrade[key]) studentsByGrade[key] = [];
-            studentsByGrade[key].push(c);
+          const sorted = [...filteredCreds as CredEntry[]].sort((a, b) => {
+            const gA = a.grade_level || 0, gB = b.grade_level || 0;
+            if (gA !== gB) return gA - gB;
+            return (a.sub_section || "—").localeCompare(b.sub_section || "—");
+          });
+          sorted.forEach((c) => {
+            const gradeKey = c.grade_level ? `Grade ${c.grade_level}` : "Unassigned";
+            const subKey = c.sub_section || "—";
+            if (!gradeMap.has(gradeKey)) gradeMap.set(gradeKey, new Map());
+            const subMap = gradeMap.get(gradeKey)!;
+            if (!subMap.has(subKey)) subMap.set(subKey, []);
+            subMap.get(subKey)!.push(c);
           });
         }
-        
+
+        const toggleGrade = (key: string) => setCollapsedCredGrades(prev => {
+          const next = new Set(prev); next.has(key) ? next.delete(key) : next.add(key); return next;
+        });
+        const toggleSub = (key: string) => setCollapsedCredSubSections(prev => {
+          const next = new Set(prev); next.has(key) ? next.delete(key) : next.add(key); return next;
+        });
+
+        const credTable = (creds: CredEntry[], showRole = false) => (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/20">
+                  <TableHead>#</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Username</TableHead>
+                  <TableHead>Password</TableHead>
+                  {showRole && <TableHead>Role</TableHead>}
+                  <TableHead>Created</TableHead>
+                  <TableHead>Copy</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {creds.map((cred, idx) => (
+                  <TableRow key={cred.id} className="hover:bg-muted/30">
+                    <TableCell className="text-xs text-muted-foreground w-8">{idx + 1}</TableCell>
+                    <TableCell className="font-semibold">{cred.full_name}</TableCell>
+                    <TableCell className="font-mono text-sm">{cred.username}</TableCell>
+                    <TableCell className="font-mono text-sm">{cred.password}</TableCell>
+                    {showRole && <TableCell><Badge variant="outline" className="text-xs capitalize">{cred.role}</Badge></TableCell>}
+                    <TableCell className="text-sm text-muted-foreground">
+                      {new Date(cred.created_at).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell>
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => copyCredential(cred)}>
+                        {copiedCredId === cred.id
+                          ? <Check className="h-4 w-4 text-accent" />
+                          : <Copy className="h-4 w-4 text-muted-foreground" />}
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        );
+
         return (
           <div className="space-y-6">
             <div>
@@ -813,16 +872,26 @@ export default function Admin() {
             <Tabs value={credFilterRole} onValueChange={(v) => setCredFilterRole(v)} className="w-full">
               <TabsList className="w-full flex-wrap h-auto gap-1 bg-muted/50 p-1 rounded-xl">
                 {credRoles.map(r => (
-                  <TabsTrigger 
-                    key={r} 
-                    value={r} 
-                    className="capitalize text-xs rounded-lg data-[state=active]:shadow-sm"
-                  >
+                  <TabsTrigger key={r} value={r} className="capitalize text-xs rounded-lg data-[state=active]:shadow-sm">
                     {r === "all" ? `All (${credentialsLog.length})` : `${r}s (${credentialsLog.filter(c => c.role === r).length})`}
                   </TabsTrigger>
                 ))}
               </TabsList>
             </Tabs>
+
+            {/* Collapse controls for student view */}
+            {isStudentView && filteredCreds.length > 0 && (
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="outline" className="rounded-lg text-xs h-7 px-2"
+                  onClick={() => setCollapsedCredGrades(new Set())}>
+                  Expand All
+                </Button>
+                <Button size="sm" variant="outline" className="rounded-lg text-xs h-7 px-2"
+                  onClick={() => setCollapsedCredGrades(new Set(Array.from(gradeMap.keys())))}>
+                  Collapse All
+                </Button>
+              </div>
+            )}
 
             {loadingCredentials ? (
               <p className="text-center text-muted-foreground">Loading...</p>
@@ -831,107 +900,65 @@ export default function Admin() {
                 <CardContent className="p-6 text-center text-muted-foreground">No credentials for this role</CardContent>
               </Card>
             ) : isStudentView ? (
-              // Students grouped by grade
-              <div className="space-y-4">
-                {Object.entries(studentsByGrade)
-                  .sort((a, b) => {
-                    const numA = parseInt(a[0].replace("Grade ", "")) || 999;
-                    const numB = parseInt(b[0].replace("Grade ", "")) || 999;
-                    return numA - numB;
-                  })
-                  .map(([gradeLabel, creds]) => (
-                    <Card key={gradeLabel} className="border-0 shadow-sm overflow-hidden">
-                      <div className="px-4 py-2.5 bg-muted/40 border-b border-border/50 flex items-center justify-between">
-                        <span className="font-semibold text-sm text-foreground">{gradeLabel}</span>
-                        <span className="text-xs text-muted-foreground">{creds.length} student{creds.length !== 1 ? "s" : ""}</span>
-                      </div>
-                      <CardContent className="p-0">
-                        <div className="overflow-x-auto">
-                          <Table>
-                            <TableHeader>
-                              <TableRow className="bg-muted/20">
-                                <TableHead>Name</TableHead>
-                                <TableHead>Username</TableHead>
-                                <TableHead>Password</TableHead>
-                                <TableHead>Created</TableHead>
-                                <TableHead>Copy</TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {creds.map((cred: any) => (
-                                <TableRow key={cred.id} className="hover:bg-muted/30">
-                                  <TableCell className="font-semibold">{cred.full_name}</TableCell>
-                                  <TableCell className="font-mono text-sm">{cred.username}</TableCell>
-                                  <TableCell className="font-mono text-sm">{cred.password}</TableCell>
-                                  <TableCell className="text-sm text-muted-foreground">
-                                    {new Date(cred.created_at).toLocaleDateString()}
-                                  </TableCell>
-                                  <TableCell>
-                                    <Button 
-                                      variant="ghost" size="icon" className="h-8 w-8" 
-                                      onClick={() => copyCredential(cred)}
+              // Students: Grade → Sub-Section → table
+              <div className="space-y-3">
+                {Array.from(gradeMap.entries())
+                  .sort(([a], [b]) => (parseInt(a.replace("Grade ", "")) || 999) - (parseInt(b.replace("Grade ", "")) || 999))
+                  .map(([gradeLabel, subMap]) => {
+                    const gradeTotal = Array.from(subMap.values()).reduce((s, arr) => s + arr.length, 0);
+                    const gradeCollapsed = collapsedCredGrades.has(gradeLabel);
+                    return (
+                      <Card key={gradeLabel} className="border-0 shadow-sm overflow-hidden">
+                        {/* Grade header — clickable to collapse/expand */}
+                        <button
+                          className="w-full flex items-center justify-between px-4 py-3 bg-primary/8 hover:bg-primary/12 transition-colors border-b border-border/50"
+                          onClick={() => toggleGrade(gradeLabel)}
+                        >
+                          <div className="flex items-center gap-2">
+                            <ChevronDown className={cn("h-4 w-4 text-primary transition-transform", gradeCollapsed && "-rotate-90")} />
+                            <span className="font-bold text-sm text-foreground">{gradeLabel}</span>
+                            <Badge className="text-xs gradient-primary border-0 text-white">{gradeTotal} students</Badge>
+                          </div>
+                          <span className="text-xs text-muted-foreground">{subMap.size} sub-section{subMap.size !== 1 ? "s" : ""}</span>
+                        </button>
+
+                        {!gradeCollapsed && (
+                          <div className="divide-y divide-border/30">
+                            {Array.from(subMap.entries())
+                              .sort(([a], [b]) => a.localeCompare(b))
+                              .map(([subLabel, subCreds]) => {
+                                const subKey = `${gradeLabel}__${subLabel}`;
+                                const subCollapsed = collapsedCredSubSections.has(subKey);
+                                return (
+                                  <div key={subLabel}>
+                                    {/* Sub-section header */}
+                                    <button
+                                      className="w-full flex items-center justify-between px-5 py-2 bg-muted/30 hover:bg-muted/50 transition-colors"
+                                      onClick={() => toggleSub(subKey)}
                                     >
-                                      {copiedCredId === cred.id ? (
-                                        <Check className="h-4 w-4 text-accent" />
-                                      ) : (
-                                        <Copy className="h-4 w-4 text-muted-foreground" />
-                                      )}
-                                    </Button>
-                                  </TableCell>
-                                </TableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+                                      <div className="flex items-center gap-2">
+                                        <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform", subCollapsed && "-rotate-90")} />
+                                        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                                          Sub-Section {subLabel}
+                                        </span>
+                                        <Badge variant="outline" className="text-xs">{subCreds.length}</Badge>
+                                      </div>
+                                    </button>
+                                    {!subCollapsed && credTable(subCreds)}
+                                  </div>
+                                );
+                              })}
+                          </div>
+                        )}
+                      </Card>
+                    );
+                  })}
               </div>
             ) : (
               // Non-student roles: flat table
               <Card className="border-0 shadow-sm overflow-hidden">
                 <CardContent className="p-0">
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="bg-muted/20">
-                          <TableHead>Name</TableHead>
-                          <TableHead>Username</TableHead>
-                          <TableHead>Password</TableHead>
-                          <TableHead>Role</TableHead>
-                          <TableHead>Created</TableHead>
-                          <TableHead>Copy</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {filteredCreds.map(cred => (
-                          <TableRow key={cred.id} className="hover:bg-muted/30">
-                            <TableCell className="font-semibold">{cred.full_name}</TableCell>
-                            <TableCell className="font-mono text-sm">{cred.username}</TableCell>
-                            <TableCell className="font-mono text-sm">{cred.password}</TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className="text-xs capitalize">{cred.role}</Badge>
-                            </TableCell>
-                            <TableCell className="text-sm text-muted-foreground">
-                              {new Date(cred.created_at).toLocaleDateString()}
-                            </TableCell>
-                            <TableCell>
-                              <Button 
-                                variant="ghost" size="icon" className="h-8 w-8" 
-                                onClick={() => copyCredential(cred)}
-                              >
-                                {copiedCredId === cred.id ? (
-                                  <Check className="h-4 w-4 text-accent" />
-                                ) : (
-                                  <Copy className="h-4 w-4 text-muted-foreground" />
-                                )}
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
+                  {credTable(filteredCreds as CredEntry[], true)}
                 </CardContent>
               </Card>
             )}

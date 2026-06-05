@@ -212,7 +212,7 @@ export const api = {
     return apiRequest(`/subjects?${params.toString()}`);
   },
 
-  async createSubject(data: { subject_name: string; subject_code: string; description?: string; credit_hours: number; ects: number; grade_level?: number; stream?: string }) {
+  async createSubject(data: { subject_name: string; subject_code: string; description?: string; credit_hours: number; ects: number; grade_level?: number; stream?: string | null }) {
     return apiRequest('/subjects', {
       method: 'POST',
       body: JSON.stringify(data),

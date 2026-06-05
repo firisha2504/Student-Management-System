@@ -15,12 +15,17 @@ interface Profile {
   is_active: boolean;
   grade_level?: number;
   stream?: string;
+  section?: string;
+  sub_section?: string;
+  admission_number?: string;
+  staff_id?: string;
 }
 
 interface User {
   id: string;
   username: string;
   email: string;
+  id_number?: string;
 }
 
 interface AuthContextType {

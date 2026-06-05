@@ -254,64 +254,96 @@ router.patch('/system-settings', authenticate, authorize('admin'), async (req, r
 router.get('/dashboard-stats', authenticate, authorize('admin', 'director', 'registrar'), async (req, res) => {
   try {
     const { grade_level, stream } = req.query;
-    
-    // Total counts
+
+    // Get current academic year
+    const [settings] = await pool.query(
+      "SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ('current_academic_year', 'current_term')"
+    );
+    const currentYear = settings.find(s => s.setting_key === 'current_academic_year')?.setting_value;
+    const currentTerm = settings.find(s => s.setting_key === 'current_term')?.setting_value;
+
+    // Total user counts by role
     const [userCounts] = await pool.query(`
-      SELECT 
-        role,
-        COUNT(*) as count
-      FROM user_roles
-      GROUP BY role
+      SELECT role, COUNT(*) as count FROM user_roles GROUP BY role
     `);
 
-    // Build WHERE clause for filters
-    let studentFilter = 'WHERE ur.role = \'student\'';
+    // Build student filter for grade/stream
+    let studentJoinFilter = '';
     const filterParams = [];
-    
     if (grade_level && grade_level !== 'all') {
-      studentFilter += ' AND sp.grade_level = ?';
+      studentJoinFilter += ' AND sp.grade_level = ?';
       filterParams.push(parseInt(grade_level));
     }
-    
     if (stream && stream !== 'all') {
-      studentFilter += ' AND sp.stream = ?';
+      studentJoinFilter += ' AND sp.stream = ?';
       filterParams.push(stream);
     }
 
-    // Gender statistics from profiles table with filters
-    const genderQuery = `
-      SELECT 
-        COALESCE(LOWER(p.gender), 'unknown') as gender,
-        COUNT(*) as count
+    // Gender stats (filtered)
+    const [genderStats] = await pool.query(`
+      SELECT COALESCE(LOWER(p.gender), 'unknown') as gender, COUNT(*) as count
       FROM profiles p
       INNER JOIN user_roles ur ON p.user_id = ur.user_id
       LEFT JOIN student_profiles sp ON p.user_id = sp.user_id
-      ${studentFilter}
+      WHERE ur.role = 'student' ${studentJoinFilter.replace(/^AND/, 'AND')}
       GROUP BY COALESCE(LOWER(p.gender), 'unknown')
-    `;
-    
-    const [genderStats] = await pool.query(genderQuery, filterParams);
+    `, filterParams);
 
-    console.log('Raw gender stats from DB:', genderStats);
-
-    const [gradeStats] = await pool.query(`
-      SELECT 
-        COUNT(*) as total_grades,
-        AVG(score) as average_score,
-        MIN(score) as min_score,
-        MAX(score) as max_score
-      FROM grades
-    `);
+    // Real subject averages from assessment_scores (per-subject weighted totals)
+    let subjectAvgFilter = '';
+    const subjectAvgParams = [];
+    if (currentYear) { subjectAvgFilter += ' AND s_score.academic_year = ?'; subjectAvgParams.push(currentYear); }
+    if (grade_level && grade_level !== 'all') { subjectAvgFilter += ' AND at.grade_level = ?'; subjectAvgParams.push(parseInt(grade_level)); }
+    if (stream && stream !== 'all') { subjectAvgFilter += " AND (at.stream = ? OR at.stream = 'Common' OR at.stream IS NULL)"; subjectAvgParams.push(stream); }
 
     const [subjectAverages] = await pool.query(`
       SELECT 
-        s.subject_name,
-        AVG(g.score) as average_score,
-        COUNT(g.id) as total_grades
-      FROM grades g
-      INNER JOIN subjects s ON g.subject_id = s.id
-      GROUP BY s.id, s.subject_name
-      ORDER BY average_score DESC
+        sub.subject_name,
+        ROUND(AVG(subject_totals.subject_score), 1) as average
+      FROM (
+        SELECT s_score.student_id, at.subject_id, SUM(s_score.score) as subject_score
+        FROM assessment_scores s_score
+        INNER JOIN assessment_types at ON s_score.assessment_type_id = at.id
+        WHERE s_score.published = TRUE ${subjectAvgFilter}
+        GROUP BY s_score.student_id, at.subject_id
+      ) subject_totals
+      INNER JOIN subjects sub ON subject_totals.subject_id = sub.id
+      GROUP BY sub.id, sub.subject_name
+      ORDER BY average DESC
+    `, subjectAvgParams);
+
+    // Real score distribution from per-subject totals
+    const [scoreRows] = await pool.query(`
+      SELECT subject_totals.subject_score as score
+      FROM (
+        SELECT s_score.student_id, at.subject_id, SUM(s_score.score) as subject_score
+        FROM assessment_scores s_score
+        INNER JOIN assessment_types at ON s_score.assessment_type_id = at.id
+        INNER JOIN student_profiles sp ON s_score.student_id = sp.user_id
+        WHERE s_score.published = TRUE ${subjectAvgFilter}
+        GROUP BY s_score.student_id, at.subject_id
+      ) subject_totals
+    `, subjectAvgParams);
+
+    const ranges = [
+      { range: '0-20', min: 0, max: 20 },
+      { range: '21-40', min: 21, max: 40 },
+      { range: '41-60', min: 41, max: 60 },
+      { range: '61-80', min: 61, max: 80 },
+      { range: '81-100', min: 81, max: 100 },
+    ];
+    const scoreDistribution = ranges.map(r => ({
+      range: r.range,
+      count: scoreRows.filter(s => s.score >= r.min && s.score <= r.max).length
+    }));
+
+    // Yearly trends from academic_year_summaries
+    const [yearlyTrends] = await pool.query(`
+      SELECT academic_year as year, ROUND(AVG(average_score), 1) as average
+      FROM academic_year_summaries
+      GROUP BY academic_year
+      ORDER BY academic_year ASC
+      LIMIT 6
     `);
 
     const stats = {
@@ -319,13 +351,11 @@ router.get('/dashboard-stats', authenticate, authorize('admin', 'director', 'reg
       totalStudents: 0,
       totalTeachers: 0,
       genderStats: genderStats
-        .filter(g => g.gender !== 'unknown') // Exclude unknown gender from chart
-        .map(g => ({
-          name: g.gender.charAt(0).toUpperCase() + g.gender.slice(1),
-          value: parseInt(g.count)
-        })),
-      grades: gradeStats[0] || {},
-      subjectAverages: subjectAverages || []
+        .filter(g => g.gender !== 'unknown')
+        .map(g => ({ name: g.gender.charAt(0).toUpperCase() + g.gender.slice(1), value: parseInt(g.count) })),
+      subjectAverages: subjectAverages.map(s => ({ name: s.subject_name, average: Number(s.average) })),
+      scoreDistribution,
+      yearlyTrends: yearlyTrends.map(t => ({ year: t.year, average: Number(t.average) })),
     };
 
     userCounts.forEach(item => {
@@ -333,8 +363,6 @@ router.get('/dashboard-stats', authenticate, authorize('admin', 'director', 'reg
       if (item.role === 'student') stats.totalStudents = item.count;
       if (item.role === 'teacher') stats.totalTeachers = item.count;
     });
-
-    console.log('Sending gender stats to frontend:', stats.genderStats);
 
     res.json(stats);
   } catch (error) {

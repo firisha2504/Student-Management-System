@@ -4,6 +4,7 @@ import { useGradeLevels, useStreams, useSections, useSubSections } from "@/conte
 import { api } from "@/services/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -14,7 +15,8 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import {
   Users, GraduationCap, BarChart3, Trophy, Eye,
-  Menu, ChevronLeft, ChevronRight, PieChart as PieChartIcon, Medal, Printer, BookOpen, CheckCheck
+  Menu, ChevronLeft, ChevronRight, PieChart as PieChartIcon, Medal, Printer, BookOpen, CheckCheck,
+  Search, ChevronDown
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import SuccessModal from "@/components/SuccessModal";
@@ -52,9 +54,23 @@ interface OverallRankingEntry {
   rank: number;
 }
 
-type DirectorSection = "teachers" | "rankings" | "top10" | "performance" | "homeroom";
+interface StudentProfile {
+  user_id: string;
+  full_name: string;
+  username: string;
+  id_number: string;
+  grade_level: number | null;
+  stream: string | null;
+  section: string | null;
+  sub_section: string | null;
+  gender: string | null;
+  is_active: boolean;
+}
+
+type DirectorSection = "students" | "teachers" | "rankings" | "top10" | "performance" | "homeroom";
 
 const sidebarItems: { id: DirectorSection; label: string; icon: React.ElementType }[] = [
+  { id: "students", label: "Students", icon: GraduationCap },
   { id: "teachers", label: "Teachers", icon: Users },
   { id: "rankings", label: "Rankings", icon: Trophy },
   { id: "top10", label: "Top 10 Overall", icon: Medal },
@@ -78,6 +94,14 @@ export default function DirectorPortal() {
   const subSections = useSubSections();
   const [teachers, setTeachers] = useState<UserWithRole[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Students
+  const [students, setStudents] = useState<StudentProfile[]>([]);
+  const [loadingStudents, setLoadingStudents] = useState(false);
+  const [studentSearch, setStudentSearch] = useState("");
+  const [studentFilterGrade, setStudentFilterGrade] = useState("all");
+  const [studentFilterStream, setStudentFilterStream] = useState("all");
+  const [collapsedGrades, setCollapsedGrades] = useState<Set<string>>(new Set());
   const [activeSection, setActiveSection] = useState<DirectorSection>("teachers");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -135,6 +159,31 @@ export default function DirectorPortal() {
 
   const [successModal, setSuccessModal] = useState<{ title: string; description?: string } | null>(null);
 
+  const fetchStudents = async () => {
+    setLoadingStudents(true);
+    try {
+      const data = await api.getAllUsers();
+      const studentProfiles: StudentProfile[] = data
+        .filter((u: any) => u.role === 'student')
+        .map((u: any) => ({
+          user_id: u.user_id,
+          full_name: u.full_name,
+          username: u.username,
+          id_number: u.id_number || u.admission_number || '—',
+          grade_level: u.grade_level,
+          stream: u.stream,
+          section: u.section,
+          sub_section: u.sub_section,
+          gender: u.gender,
+          is_active: u.is_active,
+        }));
+      setStudents(studentProfiles);
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to load students", variant: "destructive" });
+    }
+    setLoadingStudents(false);
+  };
+
   const fetchTeachers = async () => {
     setLoading(true);
     try {
@@ -146,10 +195,6 @@ export default function DirectorPortal() {
         teacherUsers.map(async (u: any) => {
           try {
             const a = await api.getTeacherAssignments(parseInt(u.user_id));
-            const subjectNames = (a.subjects || []).map((id: number) => {
-              // We'll resolve names after fetching subjects
-              return id;
-            });
             return {
               user_id: u.user_id,
               full_name: u.full_name,
@@ -204,35 +249,15 @@ export default function DirectorPortal() {
       if (perfStream !== 'all') filters.stream = perfStream;
       
       const statsData = await api.getDashboardStats(filters);
-      const totalStudents = statsData.totalStudents || 0;
-      const totalTeachers = statsData.totalTeachers || 0;
 
-      // Use real gender stats from backend if available
-      const genderStats = statsData.genderStats || [];
-
-      const subjectAverages = [
-        { name: "Mathematics", average: 75 },
-        { name: "English", average: 78 },
-        { name: "Science", average: 72 },
-        { name: "History", average: 80 },
-        { name: "Geography", average: 76 },
-      ];
-
-      const scoreDistribution = [
-        { range: "0-20", count: 5 },
-        { range: "21-40", count: 15 },
-        { range: "41-60", count: 45 },
-        { range: "61-80", count: 60 },
-        { range: "81-100", count: 25 },
-      ];
-
-      const yearlyTrends = [
-        { year: "2023", average: 72 },
-        { year: "2024", average: 75 },
-        { year: "2025", average: 78 },
-      ];
-
-      setStats({ totalStudents, totalTeachers, subjectAverages, genderStats, scoreDistribution, yearlyTrends });
+      setStats({
+        totalStudents: statsData.totalStudents || 0,
+        totalTeachers: statsData.totalTeachers || 0,
+        subjectAverages: statsData.subjectAverages || [],
+        genderStats: statsData.genderStats || [],
+        scoreDistribution: statsData.scoreDistribution || [],
+        yearlyTrends: statsData.yearlyTrends || [],
+      });
     } catch (error: any) {
       console.error('Failed to fetch stats:', error);
       toast({ title: "Error", description: "Failed to load statistics", variant: "destructive" });
@@ -241,6 +266,11 @@ export default function DirectorPortal() {
 
   useEffect(() => { fetchTeachers(); }, []);
   useEffect(() => { fetchStats(); }, [perfGrade, perfStream]);
+  useEffect(() => {
+    if (activeSection === 'homeroom') fetchHomeroomAssignments();
+    if (activeSection === 'top10') fetchTop10();
+    if (activeSection === 'students') fetchStudents();
+  }, [activeSection]);
 
   const fetchTop10 = async () => {
     setLoadingTop10(true);
@@ -544,11 +574,161 @@ export default function DirectorPortal() {
 
   const getBadgeCount = (id: DirectorSection) => {
     if (id === "teachers") return teachers.length;
+    if (id === "students") return students.length || null;
     return null;
   };
 
   const renderContent = () => {
     switch (activeSection) {
+      case "students": {
+        // Filter and sort
+        const filteredStudents = students
+          .filter(s => {
+            const q = studentSearch.toLowerCase();
+            if (q && !s.full_name.toLowerCase().includes(q) && !s.id_number.toLowerCase().includes(q)) return false;
+            if (studentFilterGrade !== "all" && s.grade_level?.toString() !== studentFilterGrade) return false;
+            if (studentFilterStream !== "all" && s.stream !== studentFilterStream) return false;
+            return true;
+          })
+          .sort((a, b) => {
+            const gA = a.grade_level || 0, gB = b.grade_level || 0;
+            if (gA !== gB) return gA - gB;
+            const stA = a.stream || '', stB = b.stream || '';
+            if (stA !== stB) return stA.localeCompare(stB);
+            const secA = a.section || '', secB = b.section || '';
+            if (secA !== secB) return secA.localeCompare(secB);
+            const subA = a.sub_section || '', subB = b.sub_section || '';
+            if (subA !== subB) return subA.localeCompare(subB);
+            return (a.full_name || '').localeCompare(b.full_name || '');
+          });
+
+        // Group by grade → stream → sub_section
+        const groups: { key: string; label: string; students: StudentProfile[] }[] = [];
+        const seen = new Map<string, StudentProfile[]>();
+        filteredStudents.forEach(s => {
+          const grade = s.grade_level ? `Grade ${s.grade_level}` : 'Unassigned';
+          const stream = (s.grade_level && s.grade_level >= 11 && s.stream)
+            ? ` · ${s.stream.charAt(0).toUpperCase() + s.stream.slice(1)}`
+            : '';
+          const key = `${grade}${stream}`;
+          if (!seen.has(key)) { seen.set(key, []); groups.push({ key, label: `${grade}${stream}`, students: seen.get(key)! }); }
+          seen.get(key)!.push(s);
+        });
+
+        return (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <h2 className="text-xl font-bold text-foreground">Students</h2>
+                <p className="text-sm text-muted-foreground">{students.length} total students</p>
+              </div>
+              <Button onClick={fetchStudents} disabled={loadingStudents} variant="outline" className="rounded-xl text-xs">
+                {loadingStudents ? "Loading..." : "Refresh"}
+              </Button>
+            </div>
+
+            {/* Filters */}
+            <Card className="border-0 shadow-sm">
+              <CardContent className="pt-4 pb-3">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div className="relative flex-1 min-w-[180px]">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search by name or ID..."
+                      value={studentSearch}
+                      onChange={e => setStudentSearch(e.target.value)}
+                      className="pl-9 rounded-xl h-9 text-sm"
+                    />
+                  </div>
+                  <Select value={studentFilterGrade} onValueChange={setStudentFilterGrade}>
+                    <SelectTrigger className="rounded-xl w-32 h-9"><SelectValue placeholder="Grade" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Grades</SelectItem>
+                      {gradeLevels.map(g => <SelectItem key={g} value={String(g)}>Grade {g}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Select value={studentFilterStream} onValueChange={setStudentFilterStream}>
+                    <SelectTrigger className="rounded-xl w-32 h-9"><SelectValue placeholder="Stream" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Streams</SelectItem>
+                      {streams.map(s => <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </CardContent>
+            </Card>
+
+            {loadingStudents ? (
+              <p className="text-center text-muted-foreground py-8">Loading students...</p>
+            ) : filteredStudents.length === 0 ? (
+              <Card className="border-0 shadow-sm">
+                <CardContent className="py-10 text-center text-muted-foreground">No students found</CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-3">
+                {groups.map(({ key, label, students: gradeStudents }) => {
+                  const isCollapsed = collapsedGrades.has(key);
+                  return (
+                    <Card key={key} className="border-0 shadow-sm overflow-hidden">
+                      <button
+                        className="w-full flex items-center justify-between px-4 py-3 bg-muted/40 hover:bg-muted/60 transition-colors border-b border-border/50"
+                        onClick={() => setCollapsedGrades(prev => {
+                          const next = new Set(prev);
+                          next.has(key) ? next.delete(key) : next.add(key);
+                          return next;
+                        })}
+                      >
+                        <div className="flex items-center gap-2">
+                          <GraduationCap className="h-4 w-4 text-primary" />
+                          <span className="font-semibold text-sm text-foreground">{label}</span>
+                          <Badge variant="secondary" className="text-xs">{gradeStudents.length} students</Badge>
+                        </div>
+                        <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", isCollapsed && "-rotate-90")} />
+                      </button>
+                      {!isCollapsed && (
+                        <div className="overflow-x-auto">
+                          <Table>
+                            <TableHeader>
+                              <TableRow className="bg-muted/20">
+                                <TableHead>#</TableHead>
+                                <TableHead>Name</TableHead>
+                                <TableHead>ID</TableHead>
+                                <TableHead>Grade</TableHead>
+                                <TableHead>Stream</TableHead>
+                                <TableHead>Section</TableHead>
+                                <TableHead>Sub-Section</TableHead>
+                                <TableHead>Gender</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {gradeStudents.map((s, idx) => (
+                                <TableRow key={s.user_id} className="hover:bg-muted/30">
+                                  <TableCell className="text-xs text-muted-foreground">{idx + 1}</TableCell>
+                                  <TableCell>
+                                    <p className="font-semibold text-sm">{s.full_name}</p>
+                                    <p className="text-xs text-muted-foreground font-mono">{s.username}</p>
+                                  </TableCell>
+                                  <TableCell className="font-mono text-sm">{s.id_number}</TableCell>
+                                  <TableCell className="text-sm">{s.grade_level ? `Grade ${s.grade_level}` : '—'}</TableCell>
+                                  <TableCell className="capitalize text-sm">{s.stream || '—'}</TableCell>
+                                  <TableCell className="capitalize text-sm">{s.section || '—'}</TableCell>
+                                  <TableCell className="text-sm">{s.sub_section || '—'}</TableCell>
+                                  <TableCell className="capitalize text-sm">{s.gender || '—'}</TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      )}
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      }
+
       case "teachers":
         return (
           <div className="space-y-6">
