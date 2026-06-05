@@ -72,14 +72,33 @@ router.post('/archive', authenticate, authorize('registrar', 'admin'), [
       'SELECT COUNT(*) as count FROM academic_year_results WHERE academic_year = ?',
       [academic_year]
     );
-
     if (existing[0].count > 0) {
       return res.status(400).json({ error: 'This academic year has already been archived' });
     }
 
+    // Check that BOTH semesters have published scores — year not complete otherwise
+    const [semesterData] = await connection.query(`
+      SELECT DISTINCT term FROM assessment_scores
+      WHERE academic_year = ? AND published = TRUE
+    `, [academic_year]);
+
+    const semestersWithData = semesterData.map(r => r.term);
+    const hasSem1 = semestersWithData.includes('Semester 1');
+    const hasSem2 = semestersWithData.includes('Semester 2');
+
+    if (!hasSem1 || !hasSem2) {
+      const missing = [];
+      if (!hasSem1) missing.push('Semester 1');
+      if (!hasSem2) missing.push('Semester 2');
+      return res.status(400).json({
+        error: `Cannot archive: ${missing.join(' and ')} scores are missing. Both semesters must have published scores before archiving the year.`,
+        missing_semesters: missing
+      });
+    }
+
     await connection.beginTransaction();
 
-    // Get all active students with their complete assessment scores
+    // Get all active students with grade levels
     const [students] = await connection.query(`
       SELECT DISTINCT
         sp.user_id,
@@ -92,17 +111,84 @@ router.post('/archive', authenticate, authorize('registrar', 'admin'), [
       WHERE p.is_active = TRUE AND sp.grade_level IS NOT NULL
     `);
 
-    console.log(`Found ${students.length} active students with grade levels`);
+    console.log(`Found ${students.length} active students`);
 
     let archived_students = 0;
     let archived_subjects = 0;
 
+    // Helper: compute per-subject weighted totals for a student/year/term filter
+    const getSubjectTotals = async (userId, year, term) => {
+      return connection.query(`
+        SELECT 
+          at.subject_id,
+          s.subject_name,
+          SUM(ascore.score * at.weight / 100) as weighted_score
+        FROM assessment_types at
+        INNER JOIN subjects s ON at.subject_id = s.id
+        INNER JOIN assessment_scores ascore ON at.id = ascore.assessment_type_id 
+          AND ascore.student_id = ? 
+          AND ascore.academic_year = ?
+          AND ascore.term = ?
+          AND ascore.published = TRUE
+        WHERE at.grade_level = (
+          SELECT grade_level FROM student_profiles WHERE user_id = ?
+        )
+        GROUP BY at.subject_id, s.subject_name
+        HAVING weighted_score IS NOT NULL
+      `, [userId, year, term, userId]);
+    };
+
+    // Helper: insert per-semester summary
+    const insertSemesterSummary = async (student, year, term, subjectScores) => {
+      if (subjectScores.length === 0) return;
+
+      const student_total = subjectScores.reduce((s, r) => s + parseFloat(r.weighted_score), 0);
+      const subject_count = subjectScores.length;
+      const average_score = student_total / subject_count;
+
+      // Rank within group for this semester
+      const [groupStudents] = await connection.query(`
+        SELECT student_id, SUM(weighted_score) as total
+        FROM (
+          SELECT ascore.student_id, SUM(ascore.score * at.weight / 100) as weighted_score
+          FROM assessment_scores ascore
+          INNER JOIN assessment_types at ON ascore.assessment_type_id = at.id
+          INNER JOIN student_profiles sp2 ON ascore.student_id = sp2.user_id
+          WHERE ascore.academic_year = ? AND ascore.term = ? AND ascore.published = TRUE
+            AND sp2.grade_level = ?
+            AND (sp2.stream = ? OR ? IS NULL OR ? = '')
+            AND (sp2.sub_section = ? OR ? IS NULL)
+          GROUP BY ascore.student_id, at.subject_id
+        ) t
+        GROUP BY student_id
+        ORDER BY total DESC
+      `, [year, term, student.grade_level,
+          student.stream, student.stream, student.stream,
+          student.sub_section, student.sub_section]);
+
+      const total_students = groupStudents.length;
+      const rank_position = Math.max(1, groupStudents.findIndex(s => s.student_id === student.user_id) + 1);
+
+      await connection.query(
+        `INSERT INTO academic_year_summaries 
+         (student_id, academic_year, term, grade_level, stream, sub_section, total_score, average_score, rank_position, total_students, subject_count, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+         ON DUPLICATE KEY UPDATE
+           total_score = VALUES(total_score),
+           average_score = VALUES(average_score),
+           rank_position = VALUES(rank_position),
+           total_students = VALUES(total_students),
+           subject_count = VALUES(subject_count)`,
+        [student.user_id, year, term, student.grade_level, student.stream,
+         student.sub_section, student_total, average_score, rank_position, total_students, subject_count]
+      );
+    };
+
     for (const student of students) {
-      console.log(`Processing student: ${student.full_name} (Grade ${student.grade_level})`);
-      
-      // Get all subjects where the student has published scores for this academic year.
-      // Sum across BOTH semesters so the archived total represents the full year.
-      const [subjectScores] = await connection.query(`
+      console.log(`Processing: ${student.full_name} (Grade ${student.grade_level})`);
+
+      // Get combined (full-year) subject totals across both semesters
+      const [fullYearScores] = await connection.query(`
         SELECT 
           at.subject_id,
           s.subject_name,
@@ -118,90 +204,74 @@ router.post('/archive', authenticate, authorize('registrar', 'admin'), [
           AND (at.sub_section IS NULL OR at.sub_section = ?)
         GROUP BY at.subject_id, s.subject_name
         HAVING weighted_score IS NOT NULL
-      `, [
-        student.user_id, 
-        academic_year, 
-        student.grade_level, 
-        student.stream || '',
-        student.sub_section || null
-      ]);
+      `, [student.user_id, academic_year, student.grade_level,
+          student.stream || '', student.sub_section || null]);
 
-      console.log(`  Found ${subjectScores.length} subjects with complete assessments`);
+      if (fullYearScores.length === 0) continue;
 
-      if (subjectScores.length > 0) {
-        let student_total = 0;
-        let subject_count = 0;
-
-        // Archive each subject result
-        for (const subject of subjectScores) {
-          await connection.query(
-            `INSERT INTO academic_year_results 
-             (student_id, academic_year, grade_level, stream, sub_section, subject_id, subject_name, total_score) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-              student.user_id,
-              academic_year,
-              student.grade_level,
-              student.stream,
-              student.sub_section,
-              subject.subject_id,
-              subject.subject_name,
-              subject.weighted_score
-            ]
-          );
-
-          student_total += parseFloat(subject.weighted_score);
-          subject_count++;
-          archived_subjects++;
-        }
-
-        // Calculate rankings for this grade/stream/sub_section group
-        const [groupStudents] = await connection.query(`
-          SELECT 
-            ayr.student_id,
-            SUM(ayr.total_score) as total_score,
-            COUNT(DISTINCT ayr.subject_id) as subject_count
-          FROM academic_year_results ayr
-          WHERE ayr.academic_year = ?
-            AND ayr.grade_level = ?
-            AND (ayr.stream = ? OR (ayr.stream IS NULL AND ? IS NULL))
-            AND (ayr.sub_section = ? OR (ayr.sub_section IS NULL AND ? IS NULL))
-          GROUP BY ayr.student_id
-          ORDER BY total_score DESC
-        `, [
-          academic_year,
-          student.grade_level,
-          student.stream,
-          student.stream,
-          student.sub_section,
-          student.sub_section
-        ]);
-
-        const total_students = groupStudents.length;
-        const rank_position = groupStudents.findIndex(s => s.student_id === student.user_id) + 1;
-        const average_score = student_total / subject_count;
-
-        // Save summary
+      // Archive subject results (full year combined)
+      for (const subject of fullYearScores) {
         await connection.query(
-          `INSERT INTO academic_year_summaries 
-           (student_id, academic_year, grade_level, stream, sub_section, total_score, average_score, rank_position, total_students, subject_count) 
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            student.user_id,
-            academic_year,
-            student.grade_level,
-            student.stream,
-            student.sub_section,
-            student_total,
-            average_score,
-            rank_position,
-            total_students,
-            subject_count
-          ]
+          `INSERT INTO academic_year_results 
+           (student_id, academic_year, grade_level, stream, sub_section, subject_id, subject_name, total_score) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [student.user_id, academic_year, student.grade_level, student.stream,
+           student.sub_section, subject.subject_id, subject.subject_name, subject.weighted_score]
         );
-
-        archived_students++;
+        archived_subjects++;
       }
+
+      // Per-semester summaries
+      const [sem1Scores] = await getSubjectTotals(student.user_id, academic_year, 'Semester 1');
+      const [sem2Scores] = await getSubjectTotals(student.user_id, academic_year, 'Semester 2');
+      await insertSemesterSummary(student, academic_year, 'Semester 1', sem1Scores);
+      await insertSemesterSummary(student, academic_year, 'Semester 2', sem2Scores);
+
+      // Full-year combined summary
+      const student_total = fullYearScores.reduce((s, r) => s + parseFloat(r.weighted_score), 0);
+      const subject_count = fullYearScores.length;
+      const average_score = student_total / subject_count;
+
+      // Rank in full-year group
+      const [groupStudents] = await connection.query(`
+        SELECT 
+          ayr.student_id,
+          SUM(ayr.total_score) as total_score
+        FROM academic_year_results ayr
+        WHERE ayr.academic_year = ?
+          AND ayr.grade_level = ?
+          AND (ayr.stream = ? OR (ayr.stream IS NULL AND ? IS NULL))
+          AND (ayr.sub_section = ? OR (ayr.sub_section IS NULL AND ? IS NULL))
+        GROUP BY ayr.student_id
+        ORDER BY total_score DESC
+      `, [academic_year, student.grade_level,
+          student.stream, student.stream,
+          student.sub_section, student.sub_section]);
+
+      const total_students = groupStudents.length;
+      const rank_position = Math.max(1, groupStudents.findIndex(s => s.student_id === student.user_id) + 1);
+      const archiveStatus = average_score >= 50
+        ? (student.grade_level >= 12 ? 'graduated' : 'promoted')
+        : 'retained';
+
+      // term = NULL means full-year combined summary
+      await connection.query(
+        `INSERT INTO academic_year_summaries 
+         (student_id, academic_year, term, grade_level, stream, sub_section, total_score, average_score, rank_position, total_students, subject_count, status)
+         VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+           total_score = VALUES(total_score),
+           average_score = VALUES(average_score),
+           rank_position = VALUES(rank_position),
+           total_students = VALUES(total_students),
+           subject_count = VALUES(subject_count),
+           status = VALUES(status)`,
+        [student.user_id, academic_year, student.grade_level, student.stream,
+         student.sub_section, student_total, average_score, rank_position, total_students,
+         subject_count, archiveStatus]
+      );
+
+      archived_students++;
     }
 
     await connection.commit();
@@ -226,16 +296,24 @@ router.get('/history/:studentId', authenticate, async (req, res) => {
   try {
     const { studentId } = req.params;
 
-    // Get summaries
+    // Get full-year summaries (term IS NULL)
     const [summaries] = await pool.query(`
       SELECT * FROM academic_year_summaries
-      WHERE student_id = ?
+      WHERE student_id = ? AND term IS NULL
       ORDER BY academic_year DESC
     `, [studentId]);
 
-    // Get detailed results for each year
+    // For each year, get per-semester summaries and subject results
     const history = [];
     for (const summary of summaries) {
+      // Per-semester summaries
+      const [semSummaries] = await pool.query(`
+        SELECT * FROM academic_year_summaries
+        WHERE student_id = ? AND academic_year = ? AND term IS NOT NULL
+        ORDER BY term ASC
+      `, [studentId, summary.academic_year]);
+
+      // Subject results (full year)
       const [results] = await pool.query(`
         SELECT * FROM academic_year_results
         WHERE student_id = ? AND academic_year = ?
@@ -244,7 +322,8 @@ router.get('/history/:studentId', authenticate, async (req, res) => {
 
       history.push({
         ...summary,
-        subjects: results
+        subjects: results,
+        semesters: semSummaries   // Semester 1 + Semester 2 individual summaries
       });
     }
 
@@ -274,8 +353,8 @@ router.get('/archived-years', authenticate, authorize('admin', 'registrar', 'dir
   }
 });
 
-// Delete archived year (Admin only - for re-archiving)
-router.delete('/archive/:academicYear', authenticate, authorize('admin'), async (req, res) => {
+// Delete archived year (Admin or Registrar - for re-archiving)
+router.delete('/archive/:academicYear', authenticate, authorize('admin', 'registrar'), async (req, res) => {
   const connection = await pool.getConnection();
   
   try {

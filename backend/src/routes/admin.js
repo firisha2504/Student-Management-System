@@ -448,4 +448,89 @@ router.get('/debug/students', authenticate, authorize('admin', 'director'), asyn
   }
 });
 
+// Rollback year-end promotion (Admin only)
+// Restores student grade levels to what they were in the archived year summary
+router.post('/rollback-promotion', authenticate, authorize('admin'), [
+  body('academic_year').matches(/^\d{4}-\d{4}(\s*E\.C\.?)?$/i)
+], async (req, res) => {
+  const connection = await pool.getConnection();
+
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { academic_year } = req.body;
+
+    // Get the archived summaries (term=NULL = full year) for this year
+    const [summaries] = await connection.query(`
+      SELECT student_id, grade_level, status
+      FROM academic_year_summaries
+      WHERE academic_year = ? AND term IS NULL
+    `, [academic_year]);
+
+    if (summaries.length === 0) {
+      return res.status(404).json({
+        error: `No archived data found for ${academic_year}. Cannot rollback.`
+      });
+    }
+
+    await connection.beginTransaction();
+
+    let restored = 0;
+    let reactivated = 0;
+
+    for (const s of summaries) {
+      if (s.status === 'graduated') {
+        // Re-activate graduated students and put them back at grade 12
+        await connection.query(
+          'UPDATE profiles SET is_active = TRUE WHERE user_id = ?',
+          [s.student_id]
+        );
+        await connection.query(
+          'UPDATE student_profiles SET grade_level = 12 WHERE user_id = ?',
+          [s.student_id]
+        );
+        reactivated++;
+      } else if (s.status === 'promoted') {
+        // Demote back: grade_level was archived grade, so current is grade+1
+        // Restore to the archived grade
+        await connection.query(
+          'UPDATE student_profiles SET grade_level = ? WHERE user_id = ?',
+          [s.grade_level, s.student_id]
+        );
+        // Restore stream for grade 10→11 reversal (grade was 10, now back to 10)
+        if (s.grade_level === 10) {
+          // Stream was cleared when moving to 11 — keep as null; admin can reassign
+        }
+        restored++;
+      }
+      // retained students: grade didn't change, nothing to rollback
+
+      // Reset status back to pending so re-promotion can run cleanly
+      await connection.query(
+        `UPDATE academic_year_summaries SET status = 'pending'
+         WHERE student_id = ? AND academic_year = ?`,
+        [s.student_id, academic_year]
+      );
+    }
+
+    await connection.commit();
+
+    res.json({
+      message: `Promotion rolled back for ${academic_year}`,
+      restored,
+      reactivated,
+      total: summaries.length
+    });
+  } catch (error) {
+    await connection.rollback();
+    console.error('Rollback promotion error:', error);
+    res.status(500).json({ error: 'Failed to rollback promotion' });
+  } finally {
+    connection.release();
+  }
+});
+
 export default router;

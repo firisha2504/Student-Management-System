@@ -173,6 +173,13 @@ export const api = {
     });
   },
 
+  async rollbackPromotion(academicYear: string) {
+    return apiRequest('/admin/rollback-promotion', {
+      method: 'POST',
+      body: JSON.stringify({ academic_year: academicYear }),
+    });
+  },
+
   async getDashboardStats(filters?: { grade_level?: string; stream?: string }) {
     const params = new URLSearchParams();
     if (filters?.grade_level) params.append('grade_level', filters.grade_level);

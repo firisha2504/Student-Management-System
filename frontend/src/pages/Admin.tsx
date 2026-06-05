@@ -31,6 +31,7 @@ interface UserWithRole {
   grade_level: number | null;
   stream: string | null;
   section: string | null;
+  sub_section: string | null;
 }
 
 type AdminSection = "users" | "create" | "requests" | "credentials" | "subjects" | "settings";
@@ -86,6 +87,11 @@ export default function Admin() {
   const [promoting, setPromoting] = useState(false);
   const [promotionResults, setPromotionResults] = useState<any>(null);
   const [promotionConfirmOpen, setPromotionConfirmOpen] = useState(false);
+  // Rollback
+  const [rollingBack, setRollingBack] = useState(false);
+  const [rollbackYear, setRollbackYear] = useState("");
+  const [rollbackConfirmOpen, setRollbackConfirmOpen] = useState(false);
+  const [rollbackResults, setRollbackResults] = useState<any>(null);
 
   // Credentials log
   const [credentialsLog, setCredentialsLog] = useState<{
@@ -100,6 +106,9 @@ export default function Admin() {
   const [copiedCredId, setCopiedCredId] = useState<string | null>(null);
   const [collapsedCredGrades, setCollapsedCredGrades] = useState<Set<string>>(new Set());
   const [collapsedCredSubSections, setCollapsedCredSubSections] = useState<Set<string>>(new Set());
+  // User list collapse state (grade → sub-section for students)
+  const [collapsedUserGrades, setCollapsedUserGrades] = useState<Set<string>>(new Set());
+  const [collapsedUserSubs, setCollapsedUserSubs] = useState<Set<string>>(new Set());
 
   // Filters
   const [searchQuery, setSearchQuery] = useState("");
@@ -307,6 +316,22 @@ export default function Admin() {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     }
     setPromoting(false);
+  };
+
+  const handleRollbackPromotion = async () => {
+    if (!rollbackYear.trim()) return;
+    setRollingBack(true);
+    setRollbackConfirmOpen(false);
+    try {
+      const formatted = rollbackYear.trim().replace('/', '-');
+      const data = await api.rollbackPromotion(formatted);
+      setRollbackResults(data);
+      showSuccess("Rollback Complete", `Restored ${data.restored} student(s), reactivated ${data.reactivated} graduated student(s).`);
+      fetchUsers();
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    }
+    setRollingBack(false);
   };
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -544,7 +569,17 @@ export default function Admin() {
       return true;
     })
     .sort((a, b) => {
-      // Sort by ID number (convert to number for proper sorting)
+      // Students: sort by grade → stream → sub-section → name
+      if (a.role === 'student' && b.role === 'student') {
+        const gA = a.grade_level || 0, gB = b.grade_level || 0;
+        if (gA !== gB) return gA - gB;
+        const stA = a.stream || '', stB = b.stream || '';
+        if (stA !== stB) return stA.localeCompare(stB);
+        const subA = a.sub_section || '—', subB = b.sub_section || '—';
+        if (subA !== subB) return subA.localeCompare(subB);
+        return (a.full_name || '').localeCompare(b.full_name || '');
+      }
+      // Others: sort by ID
       const idA = parseInt(a.id_number) || 0;
       const idB = parseInt(b.id_number) || 0;
       return idA - idB;
@@ -567,7 +602,54 @@ export default function Admin() {
 
   const renderContent = () => {
     switch (activeSection) {
-      case "users":
+      case "users": {
+        const isStudentFilter = filterRole === "student";
+
+        // Build grade → sub_section groups for student view
+        const userGradeMap = new Map<string, Map<string, UserWithRole[]>>();
+        if (isStudentFilter) {
+          filteredUsers.forEach(u => {
+            const gradeKey = u.grade_level ? `Grade ${u.grade_level}` : "Unassigned";
+            const subKey = u.sub_section || "—";
+            if (!userGradeMap.has(gradeKey)) userGradeMap.set(gradeKey, new Map());
+            const subMap = userGradeMap.get(gradeKey)!;
+            if (!subMap.has(subKey)) subMap.set(subKey, []);
+            subMap.get(subKey)!.push(u);
+          });
+        }
+
+        const toggleUG = (k: string) => setCollapsedUserGrades(prev => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; });
+        const toggleUS = (k: string) => setCollapsedUserSubs(prev => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; });
+
+        const userRow = (u: UserWithRole, idx?: number) => (
+          <TableRow key={u.user_id} className="hover:bg-muted/30">
+            {idx !== undefined && <TableCell className="text-xs text-muted-foreground w-8">{idx + 1}</TableCell>}
+            <TableCell className="font-semibold">{u.full_name}</TableCell>
+            <TableCell className="text-muted-foreground text-sm">{u.username}</TableCell>
+            <TableCell className="font-mono text-sm">{u.id_number}</TableCell>
+            <TableCell>
+              <Badge variant="outline" className="text-xs capitalize">{u.role}</Badge>
+            </TableCell>
+            <TableCell>
+              <Badge variant={u.is_active ? "default" : "destructive"} className={cn("text-xs", u.is_active && "gradient-accent border-0 text-white")}>
+                {u.is_active ? "Active" : "Inactive"}
+              </Badge>
+            </TableCell>
+            <TableCell>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" className="rounded-lg text-xs" onClick={() => toggleUserActive(u.user_id, u.is_active)}>
+                  {u.is_active ? "Deactivate" : "Activate"}
+                </Button>
+                {u.role !== "admin" && (
+                  <Button size="sm" variant="outline" className="rounded-lg text-xs text-destructive border-destructive/30 hover:bg-destructive/10" onClick={() => confirmDeleteUser(u)}>
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                )}
+              </div>
+            </TableCell>
+          </TableRow>
+        );
+
         return (
           <div className="space-y-6">
             <div>
@@ -577,11 +659,7 @@ export default function Admin() {
 
             <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
               {(["student", "teacher", "registrar", "director", "parent", "admin"] as const).map(r => (
-                <Card 
-                  key={r} 
-                  className="border-0 shadow-sm cursor-pointer hover:shadow-md transition-shadow" 
-                  onClick={() => setFilterRole(filterRole === r ? "all" : r)}
-                >
+                <Card key={r} className="border-0 shadow-sm cursor-pointer hover:shadow-md transition-shadow" onClick={() => setFilterRole(filterRole === r ? "all" : r)}>
                   <CardContent className="pt-4 pb-3 text-center">
                     <p className="text-xl font-extrabold text-foreground">{roleCounts[r]}</p>
                     <p className="text-xs text-muted-foreground font-medium capitalize">{r}s</p>
@@ -593,17 +671,10 @@ export default function Admin() {
             <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input 
-                  placeholder="Search name, username, or ID..." 
-                  value={searchQuery} 
-                  onChange={e => setSearchQuery(e.target.value)} 
-                  className="pl-9 rounded-xl" 
-                />
+                <Input placeholder="Search name, username, or ID..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="pl-9 rounded-xl" />
               </div>
               <Select value={filterRole} onValueChange={setFilterRole}>
-                <SelectTrigger className="rounded-xl">
-                  <SelectValue placeholder="Filter by role" />
-                </SelectTrigger>
+                <SelectTrigger className="rounded-xl"><SelectValue placeholder="Filter by role" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Roles</SelectItem>
                   <SelectItem value="student">Students</SelectItem>
@@ -616,14 +687,90 @@ export default function Admin() {
               </Select>
             </div>
 
-            <Card className="border-0 shadow-sm overflow-hidden">
-              <CardContent className="p-0">
-                <p className="text-sm text-muted-foreground px-4 py-3 border-b bg-muted/30">
-                  {filteredUsers.length} user(s)
-                </p>
-                {loadingUsers ? (
-                  <p className="p-6 text-center text-muted-foreground">Loading...</p>
-                ) : (
+            {/* Collapse controls for student view */}
+            {isStudentFilter && filteredUsers.length > 0 && (
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="outline" className="rounded-lg text-xs h-7 px-2" onClick={() => setCollapsedUserGrades(new Set())}>Expand All</Button>
+                <Button size="sm" variant="outline" className="rounded-lg text-xs h-7 px-2" onClick={() => setCollapsedUserGrades(new Set(Array.from(userGradeMap.keys())))}>Collapse All</Button>
+              </div>
+            )}
+
+            <p className="text-sm text-muted-foreground">{filteredUsers.length} user(s)</p>
+
+            {loadingUsers ? (
+              <p className="p-6 text-center text-muted-foreground">Loading...</p>
+            ) : isStudentFilter ? (
+              // Students: Grade → Sub-Section → rows
+              <div className="space-y-3">
+                {Array.from(userGradeMap.entries())
+                  .sort(([a], [b]) => (parseInt(a.replace("Grade ", "")) || 999) - (parseInt(b.replace("Grade ", "")) || 999))
+                  .map(([gradeLabel, subMap]) => {
+                    const gradeTotal = Array.from(subMap.values()).reduce((s, arr) => s + arr.length, 0);
+                    const gradeCollapsed = collapsedUserGrades.has(gradeLabel);
+                    return (
+                      <Card key={gradeLabel} className="border-0 shadow-sm overflow-hidden">
+                        <button className="w-full flex items-center justify-between px-4 py-3 bg-muted/40 hover:bg-muted/60 transition-colors border-b border-border/50" onClick={() => toggleUG(gradeLabel)}>
+                          <div className="flex items-center gap-2">
+                            <ChevronDown className={cn("h-4 w-4 text-primary transition-transform", gradeCollapsed && "-rotate-90")} />
+                            <span className="font-bold text-sm text-foreground">{gradeLabel}</span>
+                            <Badge className="text-xs gradient-primary border-0 text-white">{gradeTotal} students</Badge>
+                          </div>
+                          <span className="text-xs text-muted-foreground">{subMap.size} sub-section{subMap.size !== 1 ? "s" : ""}</span>
+                        </button>
+                        {!gradeCollapsed && (
+                          <div className="divide-y divide-border/30">
+                            {Array.from(subMap.entries())
+                              .sort(([a], [b]) => a.localeCompare(b))
+                              .map(([subLabel, subUsers]) => {
+                                const subKey = `${gradeLabel}__${subLabel}`;
+                                const subCollapsed = collapsedUserSubs.has(subKey);
+                                return (
+                                  <div key={subLabel}>
+                                    <button className="w-full flex items-center justify-between px-5 py-2 bg-muted/20 hover:bg-muted/40 transition-colors" onClick={() => toggleUS(subKey)}>
+                                      <div className="flex items-center gap-2">
+                                        <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform", subCollapsed && "-rotate-90")} />
+                                        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                                          {subLabel === "—" ? "No Sub-Section" : `Sub-Section ${subLabel}`}
+                                        </span>
+                                        <Badge variant="outline" className="text-xs">{subUsers.length}</Badge>
+                                      </div>
+                                    </button>
+                                    {!subCollapsed && (
+                                      <div className="overflow-x-auto">
+                                        <Table>
+                                          <TableHeader>
+                                            <TableRow className="bg-muted/10">
+                                              <TableHead className="w-8">#</TableHead>
+                                              <TableHead>Name</TableHead>
+                                              <TableHead>Username</TableHead>
+                                              <TableHead>ID</TableHead>
+                                              <TableHead>Role</TableHead>
+                                              <TableHead>Status</TableHead>
+                                              <TableHead>Action</TableHead>
+                                            </TableRow>
+                                          </TableHeader>
+                                          <TableBody>
+                                            {subUsers.map((u, i) => userRow(u, i))}
+                                          </TableBody>
+                                        </Table>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                          </div>
+                        )}
+                      </Card>
+                    );
+                  })}
+                {filteredUsers.length === 0 && (
+                  <Card className="border-0 shadow-sm"><CardContent className="py-8 text-center text-muted-foreground">No students match filters</CardContent></Card>
+                )}
+              </div>
+            ) : (
+              // Non-student: flat table
+              <Card className="border-0 shadow-sm overflow-hidden">
+                <CardContent className="p-0">
                   <div className="overflow-x-auto">
                     <Table>
                       <TableHeader>
@@ -637,61 +784,19 @@ export default function Admin() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {filteredUsers.map((u, index) => (
-                          <TableRow key={u.user_id} className="hover:bg-muted/30">
-                            <TableCell className="font-semibold">{u.full_name}</TableCell>
-                            <TableCell className="text-muted-foreground">{u.username}</TableCell>
-                            <TableCell className="font-mono text-sm">{u.id_number}</TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className="text-xs capitalize">{u.role}</Badge>
-                            </TableCell>
-                            <TableCell>
-                              <Badge 
-                                variant={u.is_active ? "default" : "destructive"} 
-                                className={cn("text-xs", u.is_active && "gradient-accent border-0 text-white")}
-                              >
-                                {u.is_active ? "Active" : "Inactive"}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex gap-2">
-                                <Button 
-                                  size="sm" 
-                                  variant="outline" 
-                                  className="rounded-lg text-xs" 
-                                  onClick={() => toggleUserActive(u.user_id, u.is_active)}
-                                >
-                                  {u.is_active ? "Deactivate" : "Activate"}
-                                </Button>
-                                {u.role !== "admin" && (
-                                  <Button 
-                                    size="sm" 
-                                    variant="outline" 
-                                    className="rounded-lg text-xs text-destructive border-destructive/30 hover:bg-destructive/10" 
-                                    onClick={() => confirmDeleteUser(u)}
-                                  >
-                                    <Trash2 className="h-3 w-3" />
-                                  </Button>
-                                )}
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))}
+                        {filteredUsers.map(u => userRow(u))}
                         {filteredUsers.length === 0 && (
-                          <TableRow>
-                            <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
-                              No users match filters
-                            </TableCell>
-                          </TableRow>
+                          <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">No users match filters</TableCell></TableRow>
                         )}
                       </TableBody>
                     </Table>
                   </div>
-                )}
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            )}
           </div>
         );
+      }
 
 
       case "create":
@@ -1096,6 +1201,55 @@ export default function Admin() {
                 >
                   <ArrowUpCircle className="h-4 w-4 mr-2" />
                   {promoting ? "Processing..." : "Run Year-End Promotion"}
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Rollback Promotion */}
+            <Card className="border-0 shadow-sm border-l-4 border-l-destructive/40">
+              <CardContent className="pt-6 space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="bg-destructive/10 rounded-xl p-2.5">
+                    <ArrowUpCircle className="h-5 w-5 text-destructive rotate-180" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-foreground">Rollback Promotion</p>
+                    <p className="text-sm text-muted-foreground">Undo a year-end promotion — restores student grades to their archived state</p>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground">Academic Year to Rollback (e.g. 2018-2019 E.C.)</label>
+                  <input
+                    type="text"
+                    value={rollbackYear}
+                    onChange={e => setRollbackYear(e.target.value)}
+                    placeholder="2018-2019 E.C."
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+
+                {rollbackResults && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-amber-50 dark:bg-amber-950/30 rounded-xl p-3 text-center">
+                      <p className="text-xl font-extrabold text-amber-600">{rollbackResults.restored}</p>
+                      <p className="text-xs text-amber-600/70 font-medium">Grades Restored</p>
+                    </div>
+                    <div className="bg-blue-50 dark:bg-blue-950/30 rounded-xl p-3 text-center">
+                      <p className="text-xl font-extrabold text-blue-600">{rollbackResults.reactivated}</p>
+                      <p className="text-xs text-blue-600/70 font-medium">Re-activated</p>
+                    </div>
+                  </div>
+                )}
+
+                <Button
+                  onClick={() => { if (rollbackYear.trim()) setRollbackConfirmOpen(true); else toast({ title: "Enter academic year", variant: "destructive" }); }}
+                  disabled={rollingBack || !rollbackYear.trim()}
+                  variant="outline"
+                  className="w-full rounded-xl border-destructive/40 text-destructive hover:bg-destructive/10 h-11 font-semibold"
+                >
+                  <ArrowUpCircle className="h-4 w-4 mr-2 rotate-180" />
+                  {rollingBack ? "Rolling back..." : "Rollback Promotion"}
                 </Button>
               </CardContent>
             </Card>
@@ -1603,6 +1757,29 @@ export default function Admin() {
               className="bg-primary text-primary-foreground hover:bg-primary/90"
             >
               {promoting ? "Processing..." : "Run Promotion"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={rollbackConfirmOpen} onOpenChange={setRollbackConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Rollback Promotion — {rollbackYear}</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will restore all promoted students back to their grade before the {rollbackYear} promotion, and re-activate any graduated students.
+              <br /><br />
+              <strong>Only run this if the promotion was done by mistake.</strong> After rollback, fix the issue and run promotion again.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={rollingBack}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleRollbackPromotion}
+              disabled={rollingBack}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {rollingBack ? "Rolling back..." : "Yes, Rollback"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

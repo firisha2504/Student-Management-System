@@ -433,8 +433,8 @@ export default function StudentPortal() {
       {/* Student Rankings */}
       <StudentRanking />
 
-      {/* Academic History */}
-      {user && <AcademicHistory studentId={user.id} />}
+      {/* Academic History — only visible after rankings are published */}
+      {user && rankingsApproved && <AcademicHistory studentId={user.id} />}
     </div>
   );
 }

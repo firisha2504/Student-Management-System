@@ -101,6 +101,7 @@ export default function RegistrarPortal() {
   const [archivedYears, setArchivedYears] = useState<any[]>([]);
   const [loadingArchived, setLoadingArchived] = useState(false);
   const [deleteYearConfirm, setDeleteYearConfirm] = useState<string | null>(null);
+  const [reArchiveConfirm, setReArchiveConfirm] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   // Bulk assignment (enhanced)
@@ -195,6 +196,20 @@ export default function RegistrarPortal() {
       await api.deleteArchivedYear(academicYear);
       toast({ title: "Success", description: "Archived year deleted successfully" });
       fetchArchivedYears(); // Refresh the list
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+    setDeleting(false);
+  };
+
+  const handleReArchiveYear = async (academicYear: string) => {
+    // Delete the old archive first, then pre-fill the archive input so the user can re-archive
+    setDeleting(true);
+    try {
+      await api.deleteArchivedYear(academicYear);
+      toast({ title: "Deleted", description: `Archived data for ${academicYear} removed. Fix the issues then click "Archive Academic Year" below.` });
+      setArchiveYear(academicYear); // Pre-fill the archive input
+      fetchArchivedYears();
     } catch (error: any) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     }
@@ -1495,7 +1510,8 @@ export default function RegistrarPortal() {
             {/* Archived Years List */}
             <Card className="border-0 shadow-sm mt-6">
               <CardContent className="pt-6">
-                <h3 className="font-semibold mb-4">Archived Academic Years</h3>
+                <h3 className="font-semibold mb-1">Archived Academic Years</h3>
+                <p className="text-xs text-muted-foreground mb-4">To modify an archived year: click <strong>Re-Archive</strong> to delete the old data, fix the scores, then archive again.</p>
                 {loadingArchived ? (
                   <p className="text-sm text-muted-foreground">Loading...</p>
                 ) : archivedYears.length === 0 ? (
@@ -1506,12 +1522,18 @@ export default function RegistrarPortal() {
                       <div key={year.academic_year} className="flex items-center justify-between p-3 rounded-lg border">
                         <div>
                           <p className="font-medium">{year.academic_year.replace('-', '/')}</p>
-                          <p className="text-sm text-muted-foreground">{year.student_count} student(s) archived</p>
+                          <p className="text-sm text-muted-foreground">{year.student_count} student(s) archived · {new Date(year.archived_at).toLocaleDateString()}</p>
                         </div>
-                        <div className="flex items-center gap-3">
-                          <div className="text-xs text-muted-foreground">
-                            {new Date(year.archived_at).toLocaleDateString()}
-                          </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="rounded-lg text-xs text-amber-600 border-amber-300 hover:bg-amber-50"
+                            onClick={() => setReArchiveConfirm(year.academic_year)}
+                            disabled={deleting}
+                          >
+                            Re-Archive
+                          </Button>
                           <Button
                             size="sm"
                             variant="ghost"
@@ -1727,7 +1749,7 @@ export default function RegistrarPortal() {
           <AlertDialogHeader>
             <AlertDialogTitle>Archive Academic Year</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently archive all student results for <strong>{archiveYear}</strong>. This action cannot be undone and the year cannot be re-archived.
+              This will permanently archive all student results for <strong>{archiveYear}</strong>. Both Semester 1 and Semester 2 scores will be combined. You can delete and re-archive later if needed.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1760,7 +1782,30 @@ export default function RegistrarPortal() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Bulk Assignment Dialog */}
+      <AlertDialog open={!!reArchiveConfirm} onOpenChange={() => setReArchiveConfirm(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Re-Archive {reArchiveConfirm?.replace('-', '/')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will <strong>delete the current archived data</strong> for <strong>{reArchiveConfirm?.replace('-', '/')}</strong> so you can fix scores and re-archive.
+              <br /><br />
+              After confirming:
+              <br />• Fix any incorrect scores in the Teacher Portal
+              <br />• Then click "Archive Academic Year" with this year to re-archive
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => reArchiveConfirm && handleReArchiveYear(reArchiveConfirm)}
+              disabled={deleting}
+              className="bg-amber-600 text-white hover:bg-amber-700"
+            >
+              {deleting ? "Deleting..." : "Delete & Prepare to Re-Archive"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <Dialog open={bulkDialogOpen} onOpenChange={setBulkDialogOpen}>
         <DialogContent aria-describedby={undefined} className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>

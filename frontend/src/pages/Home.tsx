@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { api } from "@/services/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { BookOpen, Upload, Shield, Users, GraduationCap, BarChart3, TrendingUp, ArrowRight, ClipboardList, Eye } from "lucide-react";
+import { BookOpen, Upload, Shield, Users, GraduationCap, BarChart3, ArrowRight, ClipboardList, Eye, UserCheck } from "lucide-react";
 import { Link } from "react-router-dom";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
@@ -12,6 +12,7 @@ interface Stats {
   totalGrades: number;
   avgScore: number;
   subjectAverages: { name: string; average: number }[];
+  users?: Record<string, number>;
   // teacher-specific
   assignedSubjects?: number;
   assignedGrades?: number[];
@@ -59,17 +60,15 @@ export default function Home() {
           
           const totalStudents = data.users?.student || 0;
           const totalTeachers = data.users?.teacher || 0;
-          const totalGrades = data.grades?.total_grades || 0;
-          const avgScore = data.grades?.average_score ? Math.round(data.grades.average_score) : 0;
           
           const subjectAverages = (data.subjectAverages || [])
             .map((s: any) => ({
-              name: s.subject_name,
-              average: Math.round(s.average_score)
+              name: s.name || s.subject_name,
+              average: Math.round(Number(s.average) || Number(s.average_score) || 0)
             }))
             .sort((a: any, b: any) => b.average - a.average);
 
-          setStats({ totalStudents, totalTeachers, totalGrades, avgScore, subjectAverages });
+          setStats({ totalStudents, totalTeachers, totalGrades: 0, avgScore: 0, subjectAverages, users: data.users || {} });
         }
       } catch (error) {
         console.error('Failed to fetch stats:', error);
@@ -116,8 +115,8 @@ export default function Home() {
           {[
             { label: "Students", value: stats.totalStudents, icon: GraduationCap, gradient: "gradient-primary" },
             { label: "Teachers", value: stats.totalTeachers, icon: Users, gradient: "gradient-accent" },
-            { label: "Grades", value: stats.totalGrades, icon: BarChart3, gradient: "gradient-warm" },
-            { label: "Avg Score", value: stats.avgScore > 0 ? `${stats.avgScore}%` : "—", icon: TrendingUp, gradient: "gradient-primary" },
+            { label: "Registrars", value: stats.users?.registrar || 0, icon: ClipboardList, gradient: "gradient-warm" },
+            { label: "Parents", value: stats.users?.parent || 0, icon: UserCheck, gradient: "gradient-primary" },
           ].map(({ label, value, icon: Icon, gradient }) => (
             <Card key={label} className="border-0 shadow-md hover:shadow-lg transition-shadow">
               <CardContent className="pt-6 pb-5 flex items-center gap-4">
@@ -175,12 +174,14 @@ export default function Home() {
           </Card>
           <Card className="border-0 shadow-md">
             <CardContent className="pt-6 pb-5 flex items-center gap-4">
-              <div className="gradient-primary rounded-xl p-3 shadow-lg">
-                <TrendingUp className="h-5 w-5 text-white" />
+              <div className="gradient-accent rounded-xl p-3 shadow-lg">
+                <BookOpen className="h-5 w-5 text-white" />
               </div>
               <div>
-                <p className="text-xs font-medium text-muted-foreground uppercase">Avg Score</p>
-                <p className="text-2xl font-extrabold text-foreground">{stats.avgScore > 0 ? `${stats.avgScore}%` : "—"}</p>
+                <p className="text-xs font-medium text-muted-foreground uppercase">Subjects Graded</p>
+                <p className="text-2xl font-extrabold text-foreground">
+                  {stats.totalGrades > 0 ? stats.totalGrades : "—"}
+                </p>
               </div>
             </CardContent>
           </Card>
