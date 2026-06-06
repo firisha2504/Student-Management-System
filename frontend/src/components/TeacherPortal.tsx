@@ -63,6 +63,7 @@ export default function TeacherPortal() {
   const [scoreTab, setScoreTab] = useState<ScoreTab>("scores");
   const [scores, setScores] = useState<Record<number, Record<number, string>>>({}); // studentId -> assessmentTypeId -> score
   const [savedScores, setSavedScores] = useState<SavedScore[]>([]);
+  const [collapsedViewTerms, setCollapsedViewTerms] = useState<Set<string>>(new Set());
   const [modifiedStudents, setModifiedStudents] = useState<Set<number>>(new Set());
   const [submitting, setSubmitting] = useState(false);
   const [editingScoreId, setEditingScoreId] = useState<number | null>(null);
@@ -152,18 +153,22 @@ export default function TeacherPortal() {
     fetch();
   }, [selectedSubjectId, selectedGrade, selectedSection, selectedSubSection]);
 
-  // Load saved scores when viewing
+  // Load saved scores when viewing — fetch ALL terms for the year so Semester 1 scores are visible during Semester 2
   const loadSavedScores = useCallback(async () => {
     try {
-      const data = await api.getAssessmentScores({ term, academic_year: academicYear });
+      const data = await api.getAssessmentScores({ academic_year: academicYear });
       setSavedScores(data || []);
       // Auto-expand all subjects
       const subjects = [...new Set((data || []).map((sc: any) => sc.subject_name ?? "Unknown Subject"))];
       setExpandedSubjects(new Set(subjects as string[]));
+      // Auto-collapse all terms EXCEPT the current active term
+      const allTermsInData = [...new Set((data || []).map((sc: any) => sc.term ?? 'Unknown'))];
+      const toCollapse = new Set(allTermsInData.filter(t => t !== term));
+      setCollapsedViewTerms(toCollapse);
     } catch {
       setSavedScores([]);
     }
-  }, [term, academicYear]);
+  }, [academicYear, term]);
 
   useEffect(() => {
     if (scoreTab === "view") loadSavedScores();
@@ -664,91 +669,93 @@ export default function TeacherPortal() {
                     return <p className="text-center text-muted-foreground py-6">No scores uploaded for Grade {selectedGrade}.</p>;
                   }
 
-                  // Group by student_id → subject_name
-                  const byStudent = filteredScores.reduce<Record<number, { full_name: string; username: string; admission_number?: string; subjects: Record<string, number> }>>((acc, sc) => {
-                    const subj = (sc as any).subject_name ?? "Unknown Subject";
-                    if (!acc[sc.student_id]) {
-                      acc[sc.student_id] = { 
-                        full_name: sc.full_name, 
-                        username: sc.username, 
-                        admission_number: (sc as any).admission_number,
-                        subjects: {} 
-                      };
-                    }
-                    // Sum all assessment scores for this subject
-                    if (!acc[sc.student_id].subjects[subj]) {
-                      acc[sc.student_id].subjects[subj] = 0;
-                    }
-                    acc[sc.student_id].subjects[subj] += Number(sc.score);
-                    return acc;
-                  }, {});
-
-                  // Get all unique subjects
-                  const allSubjects = [...new Set(filteredScores.map(sc => (sc as any).subject_name ?? "Unknown Subject"))].sort();
-
-                  // Convert to array for sorting
-                  const studentsArray = Object.entries(byStudent).map(([studentId, data]) => ({
-                    studentId: Number(studentId),
-                    ...data
-                  }));
+                  // Get distinct terms in the data
+                  const allTerms = [...new Set(filteredScores.map(sc => (sc as any).term ?? 'Unknown'))].sort();
 
                   return (
-                    <div className="rounded-xl border border-border/50 overflow-hidden">
-                      <div className="overflow-x-auto">
-                        <Table>
-                          <TableHeader>
-                            <TableRow className="bg-primary/10">
-                              <TableHead className="min-w-[50px] text-center font-bold">#</TableHead>
-                              <TableHead className="min-w-[200px] font-bold">Student Name</TableHead>
-                              <TableHead className="min-w-[120px] font-bold">ID Number</TableHead>
-                              {allSubjects.map(subject => (
-                                <TableHead key={subject} className="min-w-[120px] text-center font-bold">
-                                  <div className="flex items-center justify-center gap-1">
-                                    <BookOpen className="h-3.5 w-3.5 text-primary" />
-                                    {subject}
-                                  </div>
-                                </TableHead>
-                              ))}
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {studentsArray.map((student, index) => (
-                              <TableRow key={student.studentId} className="hover:bg-muted/30 transition-colors">
-                                <TableCell className="text-center font-semibold text-muted-foreground">
-                                  {index + 1}
-                                </TableCell>
-                                <TableCell className="font-semibold">
-                                  {student.full_name}
-                                </TableCell>
-                                <TableCell className="font-mono text-sm text-muted-foreground">
-                                  {student.admission_number ?? student.username}
-                                </TableCell>
-                                {allSubjects.map(subject => {
-                                  const score = student.subjects[subject];
-                                  return (
-                                    <TableCell key={subject} className="text-center">
-                                      {score !== undefined ? (
-                                        <Badge 
-                                          className={cn(
-                                            "text-sm font-bold",
-                                            score >= 50 
-                                              ? "gradient-accent border-0 text-white" 
-                                              : "bg-destructive text-destructive-foreground"
-                                          )}
-                                        >
-                                          {score.toFixed(1)}
-                                        </Badge>
-                                      ) : (
-                                        <span className="text-xs text-muted-foreground">—</span>
-                                      )}
-                                    </TableCell>
-                                  );
-                                })}
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </div>
+                    <div className="space-y-6">
+                      {allTerms.map(termLabel => {
+                        const termScores = filteredScores.filter(sc => (sc as any).term === termLabel);
+
+                        // Group by student_id → subject_name for this term
+                        const byStudent = termScores.reduce<Record<number, { full_name: string; username: string; admission_number?: string; subjects: Record<string, number> }>>((acc, sc) => {
+                          const subj = (sc as any).subject_name ?? "Unknown Subject";
+                          if (!acc[sc.student_id]) {
+                            acc[sc.student_id] = { full_name: sc.full_name, username: sc.username, admission_number: (sc as any).admission_number, subjects: {} };
+                          }
+                          if (!acc[sc.student_id].subjects[subj]) acc[sc.student_id].subjects[subj] = 0;
+                          acc[sc.student_id].subjects[subj] += Number(sc.score);
+                          return acc;
+                        }, {});
+
+                        const allSubjects = [...new Set(termScores.map(sc => (sc as any).subject_name ?? "Unknown Subject"))].sort();
+                        const studentsArray = Object.entries(byStudent).map(([studentId, data]) => ({ studentId: Number(studentId), ...data }));
+
+                        return (
+                          <div key={termLabel}>
+                            <button
+                              className="w-full flex items-center gap-2 mb-2 hover:opacity-80 transition-opacity"
+                              onClick={() => setCollapsedViewTerms(prev => {
+                                const next = new Set(prev);
+                                next.has(termLabel) ? next.delete(termLabel) : next.add(termLabel);
+                                return next;
+                              })}
+                            >
+                              <Badge className={`border-0 text-white text-xs ${termLabel === term ? 'gradient-accent' : 'bg-muted-foreground'}`}>
+                                {termLabel}
+                              </Badge>
+                              <span className="text-xs text-muted-foreground">{studentsArray.length} student(s)</span>
+                              <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground ml-auto transition-transform", collapsedViewTerms.has(termLabel) && "-rotate-90")} />
+                            </button>
+                            {!collapsedViewTerms.has(termLabel) && (
+                            <div className="rounded-xl border border-border/50 overflow-hidden">
+                              <div className="overflow-x-auto">
+                                <Table>
+                                  <TableHeader>
+                                    <TableRow className="bg-primary/10">
+                                      <TableHead className="min-w-[50px] text-center font-bold">#</TableHead>
+                                      <TableHead className="min-w-[200px] font-bold">Student Name</TableHead>
+                                      <TableHead className="min-w-[120px] font-bold">ID Number</TableHead>
+                                      {allSubjects.map(subject => (
+                                        <TableHead key={subject} className="min-w-[120px] text-center font-bold">
+                                          <div className="flex items-center justify-center gap-1">
+                                            <BookOpen className="h-3.5 w-3.5 text-primary" />
+                                            {subject}
+                                          </div>
+                                        </TableHead>
+                                      ))}
+                                    </TableRow>
+                                  </TableHeader>
+                                  <TableBody>
+                                    {studentsArray.map((student, index) => (
+                                      <TableRow key={student.studentId} className="hover:bg-muted/30 transition-colors">
+                                        <TableCell className="text-center font-semibold text-muted-foreground">{index + 1}</TableCell>
+                                        <TableCell className="font-semibold">{student.full_name}</TableCell>
+                                        <TableCell className="font-mono text-sm text-muted-foreground">{student.admission_number ?? student.username}</TableCell>
+                                        {allSubjects.map(subject => {
+                                          const score = student.subjects[subject];
+                                          return (
+                                            <TableCell key={subject} className="text-center">
+                                              {score !== undefined ? (
+                                                <Badge className={cn("text-sm font-bold", score >= 50 ? "gradient-accent border-0 text-white" : "bg-destructive text-destructive-foreground")}>
+                                                  {score.toFixed(1)}
+                                                </Badge>
+                                              ) : (
+                                                <span className="text-xs text-muted-foreground">—</span>
+                                              )}
+                                            </TableCell>
+                                          );
+                                        })}
+                                      </TableRow>
+                                    ))}
+                                  </TableBody>
+                                </Table>
+                              </div>
+                            </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   );
                 })()}
