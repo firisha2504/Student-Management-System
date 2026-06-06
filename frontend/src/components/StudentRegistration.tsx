@@ -206,8 +206,8 @@ export default function StudentRegistration() {
                 <div className="bg-muted/50 rounded-xl p-4 mt-4 space-y-2">
                   <p className="text-sm text-muted-foreground"><strong>Registration Period:</strong></p>
                   <div className="text-xs text-muted-foreground">
-                    <p>Start: {new Date(registrationOpen.startDate).toLocaleDateString()}</p>
-                    <p>End: {new Date(registrationOpen.endDate).toLocaleDateString()}</p>
+                    <p>Start: {registrationOpen.startDate}</p>
+                    <p>End: {registrationOpen.endDate}</p>
                   </div>
                 </div>
               )}

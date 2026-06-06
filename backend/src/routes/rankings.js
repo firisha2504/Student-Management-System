@@ -8,7 +8,9 @@ const router = express.Router();
 // Get rankings for a specific grade/stream (with approval check for students)
 router.get('/by-grade', authenticate, async (req, res) => {
   try {
-    const { grade_level, stream, term, academic_year } = req.query;
+    const { grade_level, stream: rawStream, term, academic_year } = req.query;
+    // Normalize stream — treat 'undefined', '', 'null' as no stream
+    const stream = (rawStream && rawStream !== 'undefined' && rawStream !== 'null') ? rawStream : undefined;
     const userRole = req.userRole;
     const userId = req.userId;
     
@@ -116,12 +118,11 @@ router.get('/by-grade', authenticate, async (req, res) => {
     
     query += `
       GROUP BY u.id, p.full_name, sp.grade_level, sp.stream, sp.section, sp.sub_section
-      HAVING COUNT(DISTINCT subject_totals.subject_id) >= ?
+      HAVING COUNT(DISTINCT subject_totals.subject_id) >= 1
       ORDER BY average_score DESC
     `;
     
-    params.push(requiredSubjects);
-    
+    // requiredSubjects kept for logging only
     const [students] = await pool.query(query, params);
     
     console.log('Rankings query executed - Grade:', grade_level, 'Stream:', stream, 'Term:', currentTerm, 'Year:', currentYear);

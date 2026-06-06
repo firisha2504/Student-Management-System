@@ -20,6 +20,7 @@ import {
 import { cn } from "@/lib/utils";
 import SuccessModal from "@/components/SuccessModal";
 import TeacherRequests from "@/components/admin/TeacherRequests";
+import { SimpleAcademicYearSelect } from "@/components/AcademicYearSelect";
 
 interface UserWithRole {
   user_id: string;
@@ -118,6 +119,7 @@ export default function Admin() {
   // Subjects management
   const [subjects, setSubjects] = useState<any[]>([]);
   const [loadingSubjects, setLoadingSubjects] = useState(false);
+  const [collapsedSubjectGrades, setCollapsedSubjectGrades] = useState<Set<string>>(new Set());
   const [subjectForm, setSubjectForm] = useState({
     subject_name: "",
     subject_code: "",
@@ -1203,13 +1205,11 @@ export default function Admin() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-muted-foreground">Next Academic Year (Ethiopian Calendar, e.g. 2019-2020 E.C.)</label>
-                  <input
-                    type="text"
+                  <label className="text-xs font-medium text-muted-foreground">Next Academic Year (Ethiopian Calendar)</label>
+                  <SimpleAcademicYearSelect
                     value={nextAcademicYear}
-                    onChange={e => setNextAcademicYear(e.target.value)}
-                    placeholder="2019-2020 E.C."
-                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    onValueChange={setNextAcademicYear}
+                    className="rounded-xl"
                   />
                 </div>
 
@@ -1261,13 +1261,11 @@ export default function Admin() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-muted-foreground">Academic Year to Rollback (Ethiopian Calendar, e.g. 2018 E.C.)</label>
-                  <input
-                    type="text"
+                  <label className="text-xs font-medium text-muted-foreground">Academic Year to Rollback (Ethiopian Calendar)</label>
+                  <SimpleAcademicYearSelect
                     value={rollbackYear}
-                    onChange={e => setRollbackYear(e.target.value)}
-                    placeholder="2018 E.C."
-                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    onValueChange={setRollbackYear}
+                    className="rounded-xl"
                   />
                 </div>
 
@@ -1554,6 +1552,23 @@ export default function Admin() {
                     <p className="text-sm text-muted-foreground mt-2">Loading subjects...</p>
                   </div>
                 ) : (
+                  <>
+                    {/* Expand / Collapse controls */}
+                    {subjects.length > 0 && (
+                      <div className="flex items-center gap-2 mb-3">
+                        <Button size="sm" variant="outline" className="rounded-lg text-xs h-7 px-2"
+                          onClick={() => setCollapsedSubjectGrades(new Set())}>
+                          Expand All
+                        </Button>
+                        <Button size="sm" variant="outline" className="rounded-lg text-xs h-7 px-2"
+                          onClick={() => {
+                            const allGrades = new Set(subjects.map(s => s.grade_level ? `Grade ${s.grade_level}` : 'All Grades'));
+                            setCollapsedSubjectGrades(allGrades);
+                          }}>
+                          Collapse All
+                        </Button>
+                      </div>
+                    )}
                   <div className="border rounded-xl overflow-hidden">
                     <Table>
                       <TableHeader>
@@ -1572,56 +1587,92 @@ export default function Admin() {
                               No subjects found. Click "Add Subject" to create one.
                             </TableCell>
                           </TableRow>
-                        ) : (
-                          subjects.map(subject => (
-                            <TableRow key={subject.id}>
-                              <TableCell className="font-medium">{subject.subject_name}</TableCell>
-                              <TableCell>Grade {subject.grade_level || "All"}</TableCell>
-                              <TableCell>
-                                <Badge variant="outline" className="rounded-full">
-                                  {subject.stream || "Common"}
-                                </Badge>
-                              </TableCell>
-                              <TableCell>
-                                {subject.teachers && subject.teachers.length > 0 ? (
-                                  <div className="space-y-1">
-                                    {subject.teachers.map((t: any, idx: number) => (
-                                      <div key={idx} className="text-xs">
-                                        <span className="font-medium">{t.name}</span>
-                                        <span className="text-muted-foreground ml-1">(Grade {t.grade_levels})</span>
+                        ) : (() => {
+                          // Group subjects by grade level
+                          const gradeMap = new Map<string, typeof subjects>();
+                          subjects.forEach(s => {
+                            const key = s.grade_level ? `Grade ${s.grade_level}` : 'All Grades';
+                            if (!gradeMap.has(key)) gradeMap.set(key, []);
+                            gradeMap.get(key)!.push(s);
+                          });
+                          const rows: React.ReactNode[] = [];
+                          Array.from(gradeMap.entries())
+                            .sort(([a], [b]) => {
+                              const na = parseInt(a.replace('Grade ', '')) || 0;
+                              const nb = parseInt(b.replace('Grade ', '')) || 0;
+                              return na - nb;
+                            })
+                            .forEach(([gradeLabel, gradeSubjects]) => {
+                              const isCollapsed = collapsedSubjectGrades.has(gradeLabel);
+                              // Grade header row
+                              rows.push(
+                                <TableRow
+                                  key={`grade-${gradeLabel}`}
+                                  className="bg-muted/40 hover:bg-muted/60 cursor-pointer transition-colors"
+                                  onClick={() => setCollapsedSubjectGrades(prev => {
+                                    const next = new Set(prev);
+                                    next.has(gradeLabel) ? next.delete(gradeLabel) : next.add(gradeLabel);
+                                    return next;
+                                  })}
+                                >
+                                  <TableCell colSpan={5} className="py-2.5 font-bold text-primary">
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-2">
+                                        <ChevronDown className={cn("h-4 w-4 transition-transform", isCollapsed && "-rotate-90")} />
+                                        <span>{gradeLabel}</span>
+                                        <Badge variant="outline" className="text-xs font-normal">{gradeSubjects.length} subject{gradeSubjects.length !== 1 ? 's' : ''}</Badge>
                                       </div>
-                                    ))}
-                                  </div>
-                                ) : (
-                                  <span className="text-muted-foreground text-sm">No teacher assigned</span>
-                                )}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                <div className="flex gap-1 justify-end">
-                                  <Button 
-                                    variant="ghost" 
-                                    size="icon"
-                                    onClick={() => startEditSubject(subject)}
-                                    className="h-8 w-8 rounded-lg"
-                                  >
-                                    <Edit className="h-4 w-4" />
-                                  </Button>
-                                  <Button 
-                                    variant="ghost" 
-                                    size="icon"
-                                    onClick={() => confirmDeleteSubject(subject)}
-                                    className="h-8 w-8 rounded-lg text-destructive hover:bg-destructive/10"
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          ))
-                        )}
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                              );
+                              // Subject rows (hidden when collapsed)
+                              if (!isCollapsed) {
+                                gradeSubjects.forEach(subject => {
+                                  rows.push(
+                                    <TableRow key={subject.id}>
+                                      <TableCell className="font-medium pl-8">{subject.subject_name}</TableCell>
+                                      <TableCell>Grade {subject.grade_level || "All"}</TableCell>
+                                      <TableCell>
+                                        <Badge variant="outline" className="rounded-full">
+                                          {subject.stream || "Common"}
+                                        </Badge>
+                                      </TableCell>
+                                      <TableCell>
+                                        {subject.teachers && subject.teachers.length > 0 ? (
+                                          <div className="space-y-1">
+                                            {subject.teachers.map((t: any, idx: number) => (
+                                              <div key={idx} className="text-xs">
+                                                <span className="font-medium">{t.name}</span>
+                                                <span className="text-muted-foreground ml-1">(Grade {t.grade_levels})</span>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        ) : (
+                                          <span className="text-muted-foreground text-sm">No teacher assigned</span>
+                                        )}
+                                      </TableCell>
+                                      <TableCell className="text-right">
+                                        <div className="flex gap-1 justify-end">
+                                          <Button variant="ghost" size="icon" onClick={() => startEditSubject(subject)} className="h-8 w-8 rounded-lg">
+                                            <Edit className="h-4 w-4" />
+                                          </Button>
+                                          <Button variant="ghost" size="icon" onClick={() => confirmDeleteSubject(subject)} className="h-8 w-8 rounded-lg text-destructive hover:bg-destructive/10">
+                                            <Trash2 className="h-4 w-4" />
+                                          </Button>
+                                        </div>
+                                      </TableCell>
+                                    </TableRow>
+                                  );
+                                });
+                              }
+                            });
+                          return rows;
+                        })()}
                       </TableBody>
                     </Table>
                   </div>
+                  </>
                 )}
               </CardContent>
             </Card>

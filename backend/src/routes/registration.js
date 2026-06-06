@@ -2,6 +2,7 @@ import express from 'express';
 import { body, validationResult } from 'express-validator';
 import pool from '../config/database.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ethiopianToGregorian } from '../utils/ethiopianCalendar.js';
 
 const router = express.Router();
 
@@ -389,18 +390,15 @@ router.get('/is-open', authenticate, async (req, res) => {
     // Parse Ethiopian date string DD/MM/YYYY E.C. → Gregorian Date for comparison
     const parseECDate = (ecStr) => {
       if (!ecStr) return null;
-      // Match DD/MM/YYYY E.C.
       const m = ecStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s*E\.C\.?$/i);
       if (!m) return null;
       const [, dd, mm, yyyy] = m;
-      // Convert Ethiopian date to Gregorian using utility
-      const { ethiopianToGregorian } = await import('../utils/ethiopianCalendar.js');
       return ethiopianToGregorian(parseInt(yyyy), parseInt(mm), parseInt(dd));
     };
 
     const now = new Date();
-    const startDate = await parseECDate(settingsObj.registration_start_date);
-    const endDate = await parseECDate(settingsObj.registration_end_date);
+    const startDate = parseECDate(settingsObj.registration_start_date);
+    const endDate = parseECDate(settingsObj.registration_end_date);
     
     let isInPeriod = true;
     if (startDate && now < startDate) isInPeriod = false;

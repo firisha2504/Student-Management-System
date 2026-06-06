@@ -348,7 +348,10 @@ export const api = {
   async getRankings(filters: { grade_level: number; stream?: string; term?: string; academic_year?: string }) {
     const params = new URLSearchParams();
     params.append('grade_level', filters.grade_level.toString());
-    if (filters.stream) params.append('stream', filters.stream);
+    // Only append stream if it's a real non-empty value
+    if (filters.stream && filters.stream !== 'undefined' && filters.stream !== 'null') {
+      params.append('stream', filters.stream);
+    }
     if (filters.term) params.append('term', filters.term);
     if (filters.academic_year) params.append('academic_year', filters.academic_year);
     
@@ -379,7 +382,9 @@ export const api = {
   async getRankingApprovalStatus(filters: { grade_level: number; stream?: string; term?: string; academic_year?: string }) {
     const params = new URLSearchParams();
     params.append('grade_level', filters.grade_level.toString());
-    if (filters.stream) params.append('stream', filters.stream);
+    if (filters.stream && filters.stream !== 'undefined' && filters.stream !== 'null') {
+      params.append('stream', filters.stream);
+    }
     if (filters.term) params.append('term', filters.term);
     if (filters.academic_year) params.append('academic_year', filters.academic_year);
     

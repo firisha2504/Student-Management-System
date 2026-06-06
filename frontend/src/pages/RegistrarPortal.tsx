@@ -1574,7 +1574,7 @@ export default function RegistrarPortal() {
                       <div key={year.academic_year} className="flex items-center justify-between p-3 rounded-lg border">
                         <div>
                           <p className="font-medium">{year.academic_year}</p>
-                          <p className="text-sm text-muted-foreground">{year.student_count} student(s) archived · {new Date(year.archived_at).toLocaleDateString()}</p>
+                          <p className="text-sm text-muted-foreground">{year.student_count} student(s) archived · {year.archived_at ? new Date(year.archived_at).toLocaleDateString('en-GB') : ''}</p>
                         </div>
                         <div className="flex items-center gap-2">
                           <Button

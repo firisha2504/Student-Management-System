@@ -102,6 +102,7 @@ export default function DirectorPortal() {
   const [studentFilterGrade, setStudentFilterGrade] = useState("all");
   const [studentFilterStream, setStudentFilterStream] = useState("all");
   const [collapsedGrades, setCollapsedGrades] = useState<Set<string>>(new Set());
+  const [collapsedSubSections, setCollapsedSubSections] = useState<Set<string>>(new Set());
   const [activeSection, setActiveSection] = useState<DirectorSection>("teachers");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -221,19 +222,21 @@ export default function DirectorPortal() {
         })
       );
 
-      // Fetch all subjects once to resolve names
+      // Fetch all subjects once to resolve names + codes
       const allSubs = await api.getAllSubjects();
       const subjectMap: Record<number, string> = {};
-      allSubs.forEach((s: any) => { subjectMap[s.id] = s.subject_name; });
+      allSubs.forEach((s: any) => {
+        // Show: "Biology (G9)" format so same-name subjects across grades are distinct
+        const gradeLabel = s.grade_level ? ` (G${s.grade_level})` : '';
+        subjectMap[s.id] = `${s.subject_name}${gradeLabel}`;
+      });
 
       setTeachers(withAssignments.map((t: any) => ({
         ...t,
-        // Deduplicate subject IDs (same subject can appear for multiple grades)
-        assignedSubjects: [...new Set(
-          [...new Set(t._subjectIds as number[])]
-            .map((id: number) => subjectMap[id])
-            .filter(Boolean)
-        )],
+        // Keep all subject IDs (no dedup by name — each grade is distinct)
+        assignedSubjects: [...new Set(t._subjectIds as number[])]
+          .map((id: number) => subjectMap[id])
+          .filter(Boolean),
       })));
     } catch (error: any) {
       console.error('Failed to fetch teachers:', error);
@@ -585,7 +588,7 @@ export default function DirectorPortal() {
   const renderContent = () => {
     switch (activeSection) {
       case "students": {
-        // Filter and sort
+        // Filter and sort: grade → stream → sub-section → section → name
         const filteredStudents = students
           .filter(s => {
             const q = studentSearch.toLowerCase();
@@ -599,25 +602,36 @@ export default function DirectorPortal() {
             if (gA !== gB) return gA - gB;
             const stA = a.stream || '', stB = b.stream || '';
             if (stA !== stB) return stA.localeCompare(stB);
+            // sub-section BEFORE section so A/B/C groups correctly
+            const subA = a.sub_section || '', subB = b.sub_section || '';
+            if (subA !== subB) {
+              if (!subA) return 1;
+              if (!subB) return -1;
+              return subA.localeCompare(subB, undefined, { numeric: true });
+            }
             const secA = a.section || '', secB = b.section || '';
             if (secA !== secB) return secA.localeCompare(secB);
-            const subA = a.sub_section || '', subB = b.sub_section || '';
-            if (subA !== subB) return subA.localeCompare(subB);
             return (a.full_name || '').localeCompare(b.full_name || '');
           });
 
-        // Group by grade → stream → sub_section
-        const groups: { key: string; label: string; students: StudentProfile[] }[] = [];
-        const seen = new Map<string, StudentProfile[]>();
+        // Build grade groups, each containing sub-section subgroups
+        // gradeGroupMap: gradeKey → subKey → students[]
+        const gradeGroupMap = new Map<string, { label: string; subMap: Map<string, StudentProfile[]> }>();
         filteredStudents.forEach(s => {
           const grade = s.grade_level ? `Grade ${s.grade_level}` : 'Unassigned';
           const stream = (s.grade_level && s.grade_level >= 11 && s.stream)
             ? ` · ${s.stream.charAt(0).toUpperCase() + s.stream.slice(1)}`
             : '';
-          const key = `${grade}${stream}`;
-          if (!seen.has(key)) { seen.set(key, []); groups.push({ key, label: `${grade}${stream}`, students: seen.get(key)! }); }
-          seen.get(key)!.push(s);
+          const gradeKey = `${grade}${stream}`;
+          const subKey = s.sub_section || '—';
+          if (!gradeGroupMap.has(gradeKey)) gradeGroupMap.set(gradeKey, { label: `${grade}${stream}`, subMap: new Map() });
+          const entry = gradeGroupMap.get(gradeKey)!;
+          if (!entry.subMap.has(subKey)) entry.subMap.set(subKey, []);
+          entry.subMap.get(subKey)!.push(s);
         });
+
+        const toggleGrade = (k: string) => setCollapsedGrades(prev => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; });
+        const toggleSub = (k: string) => setCollapsedSubSections(prev => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; });
 
         return (
           <div className="space-y-4">
@@ -670,63 +684,100 @@ export default function DirectorPortal() {
               </Card>
             ) : (
               <div className="space-y-3">
-                {groups.map(({ key, label, students: gradeStudents }) => {
-                  const isCollapsed = collapsedGrades.has(key);
-                  return (
-                    <Card key={key} className="border-0 shadow-sm overflow-hidden">
-                      <button
-                        className="w-full flex items-center justify-between px-4 py-3 bg-muted/40 hover:bg-muted/60 transition-colors border-b border-border/50"
-                        onClick={() => setCollapsedGrades(prev => {
-                          const next = new Set(prev);
-                          next.has(key) ? next.delete(key) : next.add(key);
-                          return next;
-                        })}
-                      >
-                        <div className="flex items-center gap-2">
-                          <GraduationCap className="h-4 w-4 text-primary" />
-                          <span className="font-semibold text-sm text-foreground">{label}</span>
-                          <Badge variant="secondary" className="text-xs">{gradeStudents.length} students</Badge>
-                        </div>
-                        <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", isCollapsed && "-rotate-90")} />
-                      </button>
-                      {!isCollapsed && (
-                        <div className="overflow-x-auto">
-                          <Table>
-                            <TableHeader>
-                              <TableRow className="bg-muted/20">
-                                <TableHead>#</TableHead>
-                                <TableHead>Name</TableHead>
-                                <TableHead>ID</TableHead>
-                                <TableHead>Grade</TableHead>
-                                <TableHead>Stream</TableHead>
-                                <TableHead>Section</TableHead>
-                                <TableHead>Sub-Section</TableHead>
-                                <TableHead>Gender</TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {gradeStudents.map((s, idx) => (
-                                <TableRow key={s.user_id} className="hover:bg-muted/30">
-                                  <TableCell className="text-xs text-muted-foreground">{idx + 1}</TableCell>
-                                  <TableCell>
-                                    <p className="font-semibold text-sm">{s.full_name}</p>
-                                    <p className="text-xs text-muted-foreground font-mono">{s.username}</p>
-                                  </TableCell>
-                                  <TableCell className="font-mono text-sm">{s.id_number}</TableCell>
-                                  <TableCell className="text-sm">{s.grade_level ? `Grade ${s.grade_level}` : '—'}</TableCell>
-                                  <TableCell className="capitalize text-sm">{s.stream || '—'}</TableCell>
-                                  <TableCell className="capitalize text-sm">{s.section || '—'}</TableCell>
-                                  <TableCell className="text-sm">{s.sub_section || '—'}</TableCell>
-                                  <TableCell className="capitalize text-sm">{s.gender || '—'}</TableCell>
-                                </TableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
-                        </div>
-                      )}
-                    </Card>
-                  );
-                })}
+                {Array.from(gradeGroupMap.entries())
+                  .sort(([a], [b]) => {
+                    const na = parseInt(a.replace(/[^\d]/g, '')) || 0;
+                    const nb = parseInt(b.replace(/[^\d]/g, '')) || 0;
+                    return na - nb;
+                  })
+                  .map(([gradeKey, { label, subMap }]) => {
+                    const isGradeCollapsed = collapsedGrades.has(gradeKey);
+                    const totalInGrade = Array.from(subMap.values()).reduce((s, arr) => s + arr.length, 0);
+                    return (
+                      <Card key={gradeKey} className="border-0 shadow-sm overflow-hidden">
+                        {/* Grade header */}
+                        <button
+                          className="w-full flex items-center justify-between px-4 py-3 bg-muted/40 hover:bg-muted/60 transition-colors border-b border-border/50"
+                          onClick={() => toggleGrade(gradeKey)}
+                        >
+                          <div className="flex items-center gap-2">
+                            <GraduationCap className="h-4 w-4 text-primary" />
+                            <span className="font-semibold text-sm text-foreground">{label}</span>
+                            <Badge variant="secondary" className="text-xs">{totalInGrade} students</Badge>
+                          </div>
+                          <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", isGradeCollapsed && "-rotate-90")} />
+                        </button>
+
+                        {!isGradeCollapsed && (
+                          <div className="divide-y divide-border/30">
+                            {Array.from(subMap.entries())
+                              .sort(([a], [b]) => {
+                                if (a === '—') return 1;
+                                if (b === '—') return -1;
+                                return a.localeCompare(b, undefined, { numeric: true });
+                              })
+                              .map(([subLabel, subStudents]) => {
+                                const subKey = `${gradeKey}__${subLabel}`;
+                                const isSubCollapsed = collapsedSubSections.has(subKey);
+                                return (
+                                  <div key={subLabel}>
+                                    {/* Sub-section header */}
+                                    <button
+                                      className="w-full flex items-center justify-between px-5 py-2 bg-primary/5 hover:bg-primary/10 transition-colors"
+                                      onClick={() => toggleSub(subKey)}
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform", isSubCollapsed && "-rotate-90")} />
+                                        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                                          {subLabel === '—' ? 'No Sub-Section' : `Sub-Section ${subLabel}`}
+                                        </span>
+                                        <Badge variant="outline" className="text-xs">{subStudents.length}</Badge>
+                                      </div>
+                                    </button>
+
+                                    {!isSubCollapsed && (
+                                      <div className="overflow-x-auto">
+                                        <Table>
+                                          <TableHeader>
+                                            <TableRow className="bg-muted/20">
+                                              <TableHead>#</TableHead>
+                                              <TableHead>Name</TableHead>
+                                              <TableHead>ID</TableHead>
+                                              <TableHead>Grade</TableHead>
+                                              <TableHead>Stream</TableHead>
+                                              <TableHead>Section</TableHead>
+                                              <TableHead>Sub-Section</TableHead>
+                                              <TableHead>Gender</TableHead>
+                                            </TableRow>
+                                          </TableHeader>
+                                          <TableBody>
+                                            {subStudents.map((s, idx) => (
+                                              <TableRow key={s.user_id} className="hover:bg-muted/30">
+                                                <TableCell className="text-xs text-muted-foreground">{idx + 1}</TableCell>
+                                                <TableCell>
+                                                  <p className="font-semibold text-sm">{s.full_name}</p>
+                                                  <p className="text-xs text-muted-foreground font-mono">{s.username}</p>
+                                                </TableCell>
+                                                <TableCell className="font-mono text-sm">{s.id_number}</TableCell>
+                                                <TableCell className="text-sm">{s.grade_level ? `Grade ${s.grade_level}` : '—'}</TableCell>
+                                                <TableCell className="capitalize text-sm">{s.stream || '—'}</TableCell>
+                                                <TableCell className="capitalize text-sm">{s.section || '—'}</TableCell>
+                                                <TableCell className="text-sm">{s.sub_section || '—'}</TableCell>
+                                                <TableCell className="capitalize text-sm">{s.gender || '—'}</TableCell>
+                                              </TableRow>
+                                            ))}
+                                          </TableBody>
+                                        </Table>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                          </div>
+                        )}
+                      </Card>
+                    );
+                  })}
               </div>
             )}
           </div>
@@ -1452,6 +1503,7 @@ export default function DirectorPortal() {
                           <label key={s.id} className="flex items-center gap-3 px-3 py-2.5 hover:bg-muted/30 cursor-pointer">
                             <Checkbox checked={assignedSubjectIds.includes(s.id)} onCheckedChange={() => toggleSubjectAssignment(s.id)} />
                             <span className="text-sm font-medium flex-1">{s.subject_name}</span>
+                            {s.grade_level && <Badge variant="outline" className="text-[10px]">G{s.grade_level}</Badge>}
                             {s.stream && <Badge variant="outline" className="text-[10px] capitalize">{s.stream}</Badge>}
                           </label>
                         ))}
