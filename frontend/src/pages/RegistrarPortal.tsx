@@ -1357,20 +1357,22 @@ export default function RegistrarPortal() {
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label className="text-sm font-semibold">Start Date</Label>
+                          <Label className="text-sm font-semibold">Start Date <span className="text-xs font-normal text-muted-foreground">(DD/MM/YYYY E.C.)</span></Label>
                           <Input
-                            type="date"
+                            type="text"
                             value={registrationStartDate}
                             onChange={(e) => setRegistrationStartDate(e.target.value)}
+                            placeholder="e.g. 01/01/2018 E.C."
                             className="rounded-xl"
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label className="text-sm font-semibold">End Date</Label>
+                          <Label className="text-sm font-semibold">End Date <span className="text-xs font-normal text-muted-foreground">(DD/MM/YYYY E.C.)</span></Label>
                           <Input
-                            type="date"
+                            type="text"
                             value={registrationEndDate}
                             onChange={(e) => setRegistrationEndDate(e.target.value)}
+                            placeholder="e.g. 30/01/2018 E.C."
                             className="rounded-xl"
                           />
                         </div>

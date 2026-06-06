@@ -327,8 +327,8 @@ router.get('/period-settings', authenticate, authorize('registrar', 'admin', 'di
 // Update registration period settings (registrar/admin)
 router.post('/period-settings', authenticate, authorize('registrar', 'admin'), [
   body('registration_open').isBoolean(),
-  body('registration_start_date').optional().isISO8601(),
-  body('registration_end_date').optional().isISO8601(),
+  body('registration_start_date').optional().isString(),
+  body('registration_end_date').optional().isString(),
   body('registration_academic_year').optional().isString()
 ], async (req, res) => {
   try {
@@ -385,17 +385,26 @@ router.get('/is-open', authenticate, async (req, res) => {
     });
     
     const isOpen = settingsObj.registration_open === 'true';
+
+    // Parse Ethiopian date string DD/MM/YYYY E.C. → Gregorian Date for comparison
+    const parseECDate = (ecStr) => {
+      if (!ecStr) return null;
+      // Match DD/MM/YYYY E.C.
+      const m = ecStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s*E\.C\.?$/i);
+      if (!m) return null;
+      const [, dd, mm, yyyy] = m;
+      // Convert Ethiopian date to Gregorian using utility
+      const { ethiopianToGregorian } = await import('../utils/ethiopianCalendar.js');
+      return ethiopianToGregorian(parseInt(yyyy), parseInt(mm), parseInt(dd));
+    };
+
     const now = new Date();
-    const startDate = settingsObj.registration_start_date ? new Date(settingsObj.registration_start_date) : null;
-    const endDate = settingsObj.registration_end_date ? new Date(settingsObj.registration_end_date) : null;
+    const startDate = await parseECDate(settingsObj.registration_start_date);
+    const endDate = await parseECDate(settingsObj.registration_end_date);
     
     let isInPeriod = true;
-    if (startDate && now < startDate) {
-      isInPeriod = false;
-    }
-    if (endDate && now > endDate) {
-      isInPeriod = false;
-    }
+    if (startDate && now < startDate) isInPeriod = false;
+    if (endDate && now > endDate) isInPeriod = false;
     
     res.json({
       isOpen: isOpen && isInPeriod,
@@ -403,7 +412,6 @@ router.get('/is-open', authenticate, async (req, res) => {
       isInPeriod,
       startDate: settingsObj.registration_start_date,
       endDate: settingsObj.registration_end_date,
-      currentDate: now.toISOString().split('T')[0]
     });
   } catch (error) {
     console.error('Check registration open error:', error);
