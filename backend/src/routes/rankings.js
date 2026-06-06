@@ -118,11 +118,12 @@ router.get('/by-grade', authenticate, async (req, res) => {
     
     query += `
       GROUP BY u.id, p.full_name, sp.grade_level, sp.stream, sp.section, sp.sub_section
-      HAVING COUNT(DISTINCT subject_totals.subject_id) >= 1
+      HAVING COUNT(DISTINCT subject_totals.subject_id) >= ?
       ORDER BY average_score DESC
     `;
     
-    // requiredSubjects kept for logging only
+    params.push(requiredSubjects);
+    
     const [students] = await pool.query(query, params);
     
     console.log('Rankings query executed - Grade:', grade_level, 'Stream:', stream, 'Term:', currentTerm, 'Year:', currentYear);
