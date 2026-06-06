@@ -24,21 +24,27 @@ interface AssessmentScore {
   id: number;
   assessment_type_id: number;
   score: number;
+  term: string;
   assessment_name: string;
   weight: number;
+}
+
+interface SemesterAssessment {
+  assessment_name: string;
+  weight: number;
+  sem1Score: number;   // -1 = not yet
+  sem2Score: number;   // -1 = not yet
 }
 
 interface SubjectBreakdown {
   subject: Subject;
   teacher_name: string;
-  assessments: {
-    assessment_name: string;
-    weight: number;
-    score: number;
-  }[];
-  totalScore: number;
+  assessments: SemesterAssessment[];
+  sem1Total: number;
+  sem2Total: number;
   hasScores: boolean;
   hasAssessments: boolean;
+  activeSemesters: string[]; // which semesters have any score
 }
 
 export default function StudentPortal() {
@@ -82,15 +88,19 @@ export default function StudentPortal() {
           return;
         }
 
-        // Fetch assessment scores for the student
+        // Fetch ALL assessment scores for the student (all terms, all years)
         const scoresData = await api.getAssessmentScores({
           student_id: Number(user.id),
         });
 
-        // Group scores by assessment_type_id
-        const scoreMap: Record<number, number> = {};
+        // Key: assessmentTypeId → { sem1: score, sem2: score }
+        const scoreMap: Record<number, { sem1: number; sem2: number }> = {};
         scoresData.forEach((score: AssessmentScore) => {
-          scoreMap[score.assessment_type_id] = Number(score.score);
+          if (!scoreMap[score.assessment_type_id]) {
+            scoreMap[score.assessment_type_id] = { sem1: -1, sem2: -1 };
+          }
+          if (score.term === 'Semester 1') scoreMap[score.assessment_type_id].sem1 = Number(score.score);
+          if (score.term === 'Semester 2') scoreMap[score.assessment_type_id].sem2 = Number(score.score);
         });
 
         // For each subject, fetch assessment types and build breakdown
@@ -102,37 +112,48 @@ export default function StudentPortal() {
               stream: subject.stream || undefined,
             });
 
-            // Get teacher name from first assessment type
             const teacher_name = assessmentTypes.length > 0 && assessmentTypes[0].teacher_name
-              ? assessmentTypes[0].teacher_name
-              : "—";
+              ? assessmentTypes[0].teacher_name : "—";
 
-            const assessments = assessmentTypes.map((at: any) => ({
-              assessment_name: at.assessment_name,
-              weight: Number(at.weight),
-              score: scoreMap[at.id] !== undefined ? Number(scoreMap[at.id]) : -1,
-            }));
+            const assessments: SemesterAssessment[] = assessmentTypes.map((at: any) => {
+              const s = scoreMap[at.id] || { sem1: -1, sem2: -1 };
+              return {
+                assessment_name: at.assessment_name,
+                weight: Number(at.weight),
+                sem1Score: s.sem1,
+                sem2Score: s.sem2,
+              };
+            });
 
-            const scored = assessments.filter((a: any) => a.score >= 0);
-            const totalScore = scored.reduce((sum: number, a: any) => sum + a.score, 0);
+            const sem1Total = assessments
+              .filter(a => a.sem1Score >= 0)
+              .reduce((sum, a) => sum + a.sem1Score, 0);
+            const sem2Total = assessments
+              .filter(a => a.sem2Score >= 0)
+              .reduce((sum, a) => sum + a.sem2Score, 0);
+
+            const hasSem1 = assessments.some(a => a.sem1Score >= 0);
+            const hasSem2 = assessments.some(a => a.sem2Score >= 0);
+            const activeSemesters = [
+              ...(hasSem1 ? ['Semester 1'] : []),
+              ...(hasSem2 ? ['Semester 2'] : []),
+            ];
 
             return {
               subject,
               teacher_name,
               assessments,
-              totalScore,
-              hasScores: scored.length > 0,
+              sem1Total,
+              sem2Total,
+              hasScores: hasSem1 || hasSem2,
               hasAssessments: assessments.length > 0,
+              activeSemesters,
             };
           } catch (error) {
-            console.error(`Error fetching assessments for subject ${subject.id}:`, error);
             return {
-              subject,
-              teacher_name: "—",
-              assessments: [],
-              totalScore: 0,
-              hasScores: false,
-              hasAssessments: false,
+              subject, teacher_name: "—", assessments: [],
+              sem1Total: 0, sem2Total: 0,
+              hasScores: false, hasAssessments: false, activeSemesters: [],
             };
           }
         });
@@ -163,11 +184,11 @@ export default function StudentPortal() {
   const gradedCount = breakdowns.filter(b => b.hasScores).length;
   const progressPercent = subjects.length > 0 ? Math.round((gradedCount / subjects.length) * 100) : 0;
 
-  const overallTotal = breakdowns.reduce((sum, b) => {
-    const scored = b.assessments.filter(a => a.score >= 0);
-    return sum + scored.reduce((s, a) => s + Number(a.score), 0);
+  // Overall average: use sem2 total if available, else sem1 total
+  const subjectsWithScores = breakdowns.filter(b => b.hasScores);
+  const overallTotal = subjectsWithScores.reduce((sum, b) => {
+    return sum + (b.sem2Total > 0 ? b.sem2Total : b.sem1Total);
   }, 0);
-  const subjectsWithScores = breakdowns.filter(b => b.assessments.some(a => a.score >= 0));
   const overallAverage = subjectsWithScores.length > 0
     ? (overallTotal / subjectsWithScores.length).toFixed(1)
     : null;
@@ -349,69 +370,67 @@ export default function StudentPortal() {
                                   <td colSpan={(profile?.grade_level ?? 0) >= 11 ? 6 : 5} className="p-0">
                                     {bd.assessments.length > 0 && (
                                       <div className="mx-4 my-3 rounded-xl border border-border/60 bg-card/80 backdrop-blur-sm overflow-hidden shadow-sm">
-                                        <div className="grid grid-cols-3 gap-0 text-xs font-semibold text-muted-foreground uppercase tracking-wider px-4 py-2.5 bg-muted/40 border-b border-border/40">
+                                        {/* Header — dynamic columns based on which semesters exist */}
+                                        <div className="grid gap-0 text-xs font-semibold text-muted-foreground uppercase tracking-wider px-4 py-2.5 bg-muted/40 border-b border-border/40"
+                                          style={{ gridTemplateColumns: bd.activeSemesters.length === 2 ? '1fr 60px 90px 90px' : '1fr 60px 90px' }}>
                                           <span>Assessment</span>
                                           <span className="text-center">Weight</span>
-                                          <span className="text-right">Score</span>
+                                          {bd.activeSemesters.includes('Semester 1') && <span className="text-center">Sem 1</span>}
+                                          {bd.activeSemesters.includes('Semester 2') && <span className="text-center">Sem 2</span>}
                                         </div>
                                         <div className="divide-y divide-border/30">
                                           {bd.assessments.map((a, i) => (
-                                            <div
-                                              key={i}
-                                              className="grid grid-cols-3 gap-0 items-center px-4 py-2.5 hover:bg-muted/20 transition-colors"
-                                            >
-                                              <span className="text-sm font-medium text-foreground">
-                                                {a.assessment_name}
-                                              </span>
-                                              <span className="text-sm text-center text-muted-foreground">
-                                                {a.weight}%
-                                              </span>
-                                              <div className="text-right">
-                                                {a.score >= 0 ? (
-                                                  <Badge
-                                                    variant="outline"
-                                                    className={`text-xs font-bold ${
-                                                      a.score >= a.weight * 0.5
-                                                        ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-400"
-                                                        : "bg-destructive/10 text-destructive border-destructive/30"
-                                                    }`}
-                                                  >
-                                                    {a.score}/{a.weight}
-                                                  </Badge>
-                                                ) : (
-                                                  <Badge
-                                                    variant="outline"
-                                                    className="text-xs text-muted-foreground border-border/50"
-                                                  >
-                                                    Pending
-                                                  </Badge>
-                                                )}
-                                              </div>
+                                            <div key={i} className="grid gap-0 items-center px-4 py-2.5 hover:bg-muted/20 transition-colors"
+                                              style={{ gridTemplateColumns: bd.activeSemesters.length === 2 ? '1fr 60px 90px 90px' : '1fr 60px 90px' }}>
+                                              <span className="text-sm font-medium text-foreground">{a.assessment_name}</span>
+                                              <span className="text-sm text-center text-muted-foreground">{a.weight}%</span>
+                                              {bd.activeSemesters.includes('Semester 1') && (
+                                                <div className="text-center">
+                                                  {a.sem1Score >= 0 ? (
+                                                    <Badge variant="outline" className={`text-xs font-bold ${a.sem1Score >= a.weight * 0.5 ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30" : "bg-destructive/10 text-destructive border-destructive/30"}`}>
+                                                      {a.sem1Score}/{a.weight}
+                                                    </Badge>
+                                                  ) : (
+                                                    <Badge variant="outline" className="text-xs text-muted-foreground border-border/50">Pending</Badge>
+                                                  )}
+                                                </div>
+                                              )}
+                                              {bd.activeSemesters.includes('Semester 2') && (
+                                                <div className="text-center">
+                                                  {a.sem2Score >= 0 ? (
+                                                    <Badge variant="outline" className={`text-xs font-bold ${a.sem2Score >= a.weight * 0.5 ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30" : "bg-destructive/10 text-destructive border-destructive/30"}`}>
+                                                      {a.sem2Score}/{a.weight}
+                                                    </Badge>
+                                                  ) : (
+                                                    <Badge variant="outline" className="text-xs text-muted-foreground border-border/50">Pending</Badge>
+                                                  )}
+                                                </div>
+                                              )}
                                             </div>
                                           ))}
                                         </div>
-                                        {(() => {
-                                          const scored = bd.assessments.filter(a => a.score >= 0);
-                                          if (scored.length === 0) return null;
-                                          const total = scored.reduce((sum, a) => sum + Number(a.score), 0);
-                                          return (
-                                            <div className="grid grid-cols-3 gap-0 items-center px-4 py-3 bg-muted/30 border-t border-border/50">
-                                              <span className="text-sm font-bold text-foreground">Total</span>
-                                              <span />
-                                              <div className="text-right">
-                                                <span
-                                                  className={`text-sm font-extrabold ${
-                                                    total >= 50
-                                                      ? "text-emerald-600 dark:text-emerald-400"
-                                                      : "text-destructive"
-                                                  }`}
-                                                >
-                                                  {total.toFixed(1)}/100
+                                        {/* Totals row */}
+                                        {bd.hasScores && (
+                                          <div className="grid gap-0 items-center px-4 py-3 bg-muted/30 border-t border-border/50"
+                                            style={{ gridTemplateColumns: bd.activeSemesters.length === 2 ? '1fr 60px 90px 90px' : '1fr 60px 90px' }}>
+                                            <span className="text-sm font-bold text-foreground">Total</span>
+                                            <span />
+                                            {bd.activeSemesters.includes('Semester 1') && (
+                                              <div className="text-center">
+                                                <span className={`text-sm font-extrabold ${bd.sem1Total >= 50 ? "text-emerald-600" : "text-destructive"}`}>
+                                                  {bd.sem1Total.toFixed(1)}/100
                                                 </span>
                                               </div>
-                                            </div>
-                                          );
-                                        })()}
+                                            )}
+                                            {bd.activeSemesters.includes('Semester 2') && (
+                                              <div className="text-center">
+                                                <span className={`text-sm font-extrabold ${bd.sem2Total >= 50 ? "text-emerald-600" : "text-destructive"}`}>
+                                                  {bd.sem2Total.toFixed(1)}/100
+                                                </span>
+                                              </div>
+                                            )}
+                                          </div>
+                                        )}
                                       </div>
                                     )}
                                   </td>

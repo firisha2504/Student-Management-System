@@ -30,6 +30,7 @@ export default function RankingApproval() {
   const [bulkApproving, setBulkApproving] = useState(false);
   const [term, setTerm] = useState("Semester 1");
   const [academicYear, setAcademicYear] = useState("");
+  const terms = ["Semester 1", "Semester 2", "overall"];
 
   const needsStream = gradeLevel === "11" || gradeLevel === "12";
 
@@ -51,7 +52,9 @@ export default function RankingApproval() {
     try {
       const data = await api.getRankings({
         grade_level: parseInt(gradeLevel),
-        stream: stream || undefined
+        stream: stream || undefined,
+        term: term,
+        academic_year: academicYear
       });
 
       if (data.rankings) {
@@ -64,7 +67,9 @@ export default function RankingApproval() {
       // Check approval status
       const statusData = await api.getRankingApprovalStatus({
         grade_level: parseInt(gradeLevel),
-        stream: stream || undefined
+        stream: stream || undefined,
+        term: term,
+        academic_year: academicYear
       });
       setApproved(statusData.approved);
 
@@ -190,6 +195,19 @@ export default function RankingApproval() {
               </Select>
             )}
 
+            <Select value={term} onValueChange={v => { setTerm(v); setRankings([]); }}>
+              <SelectTrigger className="rounded-xl">
+                <SelectValue placeholder="Term" />
+              </SelectTrigger>
+              <SelectContent>
+                {terms.map(t => (
+                  <SelectItem key={t} value={t}>
+                    {t === "overall" ? "Overall (Both Semesters)" : t}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
             <Button
               onClick={fetchRankings}
               disabled={loading}
@@ -202,17 +220,22 @@ export default function RankingApproval() {
           {rankings.length > 0 && (
             <>
               <div className="flex items-center justify-between pt-2">
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    "text-xs",
-                    approved
-                      ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30"
-                      : "bg-amber-500/10 text-amber-600 border-amber-500/30"
-                  )}
-                >
-                  {approved ? "✓ Published — Students can see ranks" : "⚠ Unpublished — Students cannot see ranks"}
-                </Badge>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="text-xs">
+                    {term === "overall" ? "Overall — Both Semesters Combined" : term}
+                  </Badge>
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      "text-xs",
+                      approved
+                        ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30"
+                        : "bg-amber-500/10 text-amber-600 border-amber-500/30"
+                    )}
+                  >
+                    {approved ? "✓ Published — Students can see ranks" : "⚠ Unpublished — Students cannot see ranks"}
+                  </Badge>
+                </div>
                 <Button
                   onClick={togglePublish}
                   disabled={publishing}

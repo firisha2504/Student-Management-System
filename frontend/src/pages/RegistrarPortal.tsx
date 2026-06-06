@@ -116,6 +116,27 @@ export default function RegistrarPortal() {
 
   // Grade collapse state
   const [collapsedGrades, setCollapsedGrades] = useState<Set<number>>(new Set());
+  const [collapsedSubSections, setCollapsedSubSections] = useState<Set<string>>(new Set());
+
+  const toggleSubSectionCollapse = (key: string) => {
+    setCollapsedSubSections(prev => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  };
+
+  const toggleSelectSubSection = (grade: number | null, subSection: string | null) => {
+    const subStudents = filtered.filter(
+      s => (s.grade_level ?? 0) === (grade ?? 0) && (s.sub_section || null) === subSection
+    );
+    const allSelected = subStudents.every(s => selectedStudents.has(s.user_id));
+    setSelectedStudents(prev => {
+      const next = new Set(prev);
+      subStudents.forEach(s => allSelected ? next.delete(s.user_id) : next.add(s.user_id));
+      return next;
+    });
+  };
 
   // Current academic year
   const [currentAcademicYear, setCurrentAcademicYear] = useState<string | null>(null);
@@ -316,9 +337,7 @@ export default function RegistrarPortal() {
       // Primary sort: by grade level (ascending: 9, 10, 11, 12)
       const gradeA = a.grade_level || 0;
       const gradeB = b.grade_level || 0;
-      if (gradeA !== gradeB) {
-        return gradeA - gradeB;
-      }
+      if (gradeA !== gradeB) return gradeA - gradeB;
       
       // Secondary sort: by stream (natural before social)
       const streamA = a.stream || '';
@@ -329,24 +348,23 @@ export default function RegistrarPortal() {
         return streamA.localeCompare(streamB);
       }
       
-      // Tertiary sort: by section (alphabetical)
-      const sectionA = a.section || '';
-      const sectionB = b.section || '';
-      if (sectionA !== sectionB) {
-        return sectionA.localeCompare(sectionB);
-      }
-      
-      // Quaternary sort: by sub-section (alphabetical)
+      // Tertiary sort: by sub-section (A, B, C... — primary grouping within grade)
       const subSectionA = a.sub_section || '';
       const subSectionB = b.sub_section || '';
       if (subSectionA !== subSectionB) {
-        return subSectionA.localeCompare(subSectionB);
+        // Empty sub-section goes last
+        if (!subSectionA) return 1;
+        if (!subSectionB) return -1;
+        return subSectionA.localeCompare(subSectionB, undefined, { numeric: true });
       }
+
+      // Quaternary sort: by section (oromo, amharic, somali) within same sub-section
+      const sectionA = a.section || '';
+      const sectionB = b.section || '';
+      if (sectionA !== sectionB) return sectionA.localeCompare(sectionB);
       
-      // Final sort: by ID number (ascending)
-      const idA = a.id_number || '';
-      const idB = b.id_number || '';
-      return idA.localeCompare(idB, undefined, { numeric: true });
+      // Final sort: by name ascending
+      return (a.full_name || '').localeCompare(b.full_name || '');
     });
 
   const addUserRow = () => {
@@ -907,41 +925,28 @@ export default function RegistrarPortal() {
                       <TableBody>
                         {(() => {
                           let currentGrade: number | null = null;
+                          let currentSubSection: string | null = null;
                           const rows: React.ReactNode[] = [];
                           
-                          filtered.forEach((s, index) => {
-                            // Add grade level header when grade changes
+                          filtered.forEach((s) => {
+                            // Grade header
                             if (s.grade_level !== currentGrade) {
                               currentGrade = s.grade_level;
-                              const gradeKey = currentGrade ?? 0; // Use consistent key
+                              currentSubSection = null;
+                              const gradeKey = currentGrade ?? 0;
                               const gradeStudentsCount = filtered.filter(student => student.grade_level === currentGrade).length;
                               const isCollapsed = collapsedGrades.has(gradeKey);
-                              
-                              // Capture the grade value in a closure to avoid stale closure issues
                               const gradeForClosure = currentGrade;
                               
                               rows.push(
                                 <TableRow key={`grade-${currentGrade}`} className="bg-muted/50 hover:bg-muted/70 cursor-pointer transition-colors">
-                                  <TableCell 
-                                    colSpan={9} 
-                                    className="font-bold text-primary py-3"
-                                    onClick={() => toggleGradeCollapse(gradeForClosure)}
-                                  >
+                                  <TableCell colSpan={9} className="font-bold text-primary py-3" onClick={() => toggleGradeCollapse(gradeForClosure)}>
                                     <div className="flex items-center justify-between">
                                       <div className="flex items-center gap-2">
-                                        {isCollapsed ? (
-                                          <ChevronRight className="h-4 w-4 transition-transform" />
-                                        ) : (
-                                          <ChevronDown className="h-4 w-4 transition-transform" />
-                                        )}
-                                        <span>
-                                          {gradeForClosure ? `Grade ${gradeForClosure}` : 'No Grade Assigned'}
-                                        </span>
-                                        {isCollapsed && (
-                                          <span className="text-xs text-muted-foreground ml-2">
-                                            (Click to expand)
-                                          </span>
-                                        )}
+                                        {isCollapsed
+                                          ? <ChevronRight className="h-4 w-4" />
+                                          : <ChevronDown className="h-4 w-4" />}
+                                        <span>{gradeForClosure ? `Grade ${gradeForClosure}` : 'No Grade Assigned'}</span>
                                       </div>
                                       <Badge variant="outline" className="text-xs">
                                         {gradeStudentsCount} student{gradeStudentsCount !== 1 ? 's' : ''}
@@ -952,46 +957,94 @@ export default function RegistrarPortal() {
                               );
                             }
                             
-                            // Add student row only if grade is not collapsed
-                            const gradeKey = s.grade_level ?? 0; // Use consistent key
-                            if (!collapsedGrades.has(gradeKey)) {
+                            const gradeKey = s.grade_level ?? 0;
+                            if (collapsedGrades.has(gradeKey)) return;
+
+                            // Sub-section subheader
+                            const thisSub = s.sub_section || null;
+                            if (thisSub !== currentSubSection) {
+                              currentSubSection = thisSub;
+                              const subKey = `${currentGrade ?? 0}__${thisSub ?? ''}`;
+                              const isSubCollapsed = collapsedSubSections.has(subKey);
+                              const subStudents = filtered.filter(
+                                st => (st.grade_level ?? 0) === (currentGrade ?? 0) && (st.sub_section || null) === thisSub
+                              );
+                              const allSubSelected = subStudents.length > 0 && subStudents.every(st => selectedStudents.has(st.user_id));
+                              const someSubSelected = subStudents.some(st => selectedStudents.has(st.user_id));
+                              const gradeCapture = currentGrade;
+                              const subCapture = thisSub;
+
                               rows.push(
-                                <TableRow key={s.user_id} className={cn("hover:bg-muted/30", selectedStudents.has(s.user_id) && "bg-primary/5")}>
-                                  <TableCell>
+                                <TableRow key={subKey} className="bg-primary/5 hover:bg-primary/10 transition-colors">
+                                  <TableCell className="py-1.5 w-10">
                                     <Checkbox
-                                      checked={selectedStudents.has(s.user_id)}
-                                      onCheckedChange={() => toggleStudentSelection(s.user_id)}
+                                      checked={allSubSelected}
+                                      data-state={someSubSelected && !allSubSelected ? "indeterminate" : undefined}
+                                      onCheckedChange={() => toggleSelectSubSection(gradeCapture, subCapture)}
+                                      className="rounded"
+                                      title={`Select all Sub-Section ${thisSub ?? '—'}`}
                                     />
                                   </TableCell>
-                                  <TableCell className="font-semibold">{s.full_name}</TableCell>
-                                  <TableCell className="font-mono text-sm">{s.id_number}</TableCell>
-                                  <TableCell>{s.grade_level || "—"}</TableCell>
-                                  <TableCell className="capitalize">{s.stream || "—"}</TableCell>
-                                  <TableCell className="capitalize">{s.section || "—"}</TableCell>
-                                  <TableCell className="uppercase font-semibold">{s.sub_section || "—"}</TableCell>
-                                  <TableCell className="text-sm">
-                                    {s.parent_count > 0
-                                      ? <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-xs">
-                                          Parent ({s.parent_count})
+                                  <TableCell
+                                    colSpan={8}
+                                    className="py-1.5 cursor-pointer"
+                                    onClick={() => toggleSubSectionCollapse(subKey)}
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      {isSubCollapsed
+                                        ? <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+                                        : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
+                                      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                                        {thisSub ? `Sub-Section ${thisSub}` : 'No Sub-Section'}
+                                      </span>
+                                      <Badge variant="secondary" className="text-xs">{subStudents.length}</Badge>
+                                      {someSubSelected && (
+                                        <Badge className="text-xs gradient-primary border-0 text-white">
+                                          {subStudents.filter(st => selectedStudents.has(st.user_id)).length} selected
                                         </Badge>
-                                      : <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30 text-xs">
-                                          No Parent
-                                        </Badge>}
-                                  </TableCell>
-                                  <TableCell>
-                                    <div className="flex gap-2">
-                                      <Button size="sm" variant="outline" className="rounded-lg text-xs" onClick={() => openEditDialog(s)}>Edit</Button>
-                                      <Button size="sm" variant="outline" className="rounded-lg text-xs" onClick={() => { setImageTargetStudent(s.user_id); fileInputRef.current?.click(); }}>
-                                        <Camera className="h-3 w-3" />
-                                      </Button>
-                                      <Button size="sm" variant="outline" className="rounded-lg text-xs" onClick={() => openLinkDialog(s)}>
-                                        <Link2 className="h-3 w-3" />
-                                      </Button>
+                                      )}
                                     </div>
                                   </TableCell>
                                 </TableRow>
                               );
                             }
+
+                            // Student row — hide if sub-section is collapsed
+                            const subKey = `${s.grade_level ?? 0}__${s.sub_section ?? ''}`;
+                            if (collapsedSubSections.has(subKey)) return;
+
+                            rows.push(
+                              <TableRow key={s.user_id} className={cn("hover:bg-muted/30", selectedStudents.has(s.user_id) && "bg-primary/5")}>
+                                <TableCell>
+                                  <Checkbox
+                                    checked={selectedStudents.has(s.user_id)}
+                                    onCheckedChange={() => toggleStudentSelection(s.user_id)}
+                                  />
+                                </TableCell>
+                                <TableCell className="font-semibold">{s.full_name}</TableCell>
+                                <TableCell className="font-mono text-sm">{s.id_number}</TableCell>
+                                <TableCell>{s.grade_level || "—"}</TableCell>
+                                <TableCell className="capitalize">{s.stream || "—"}</TableCell>
+                                <TableCell className="capitalize">{s.section || "—"}</TableCell>
+                                <TableCell className="uppercase font-semibold">{s.sub_section || "—"}</TableCell>
+                                <TableCell className="text-sm">
+                                  {s.parent_count > 0
+                                    ? <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-xs">Parent ({s.parent_count})</Badge>
+                                    : <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30 text-xs">No Parent</Badge>}
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex gap-2">
+                                    <Button size="sm" variant="outline" className="rounded-lg text-xs" onClick={() => openEditDialog(s)}>Edit</Button>
+                                    <Button size="sm" variant="outline" className="rounded-lg text-xs" onClick={() => { setImageTargetStudent(s.user_id); fileInputRef.current?.click(); }}>
+                                      <Camera className="h-3 w-3" />
+                                    </Button>
+                                    <Button size="sm" variant="outline" className="rounded-lg text-xs" onClick={() => openLinkDialog(s)}>
+                                      <Link2 className="h-3 w-3" />
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            );
                           });
                           
                           if (filtered.length === 0) {
@@ -1001,7 +1054,6 @@ export default function RegistrarPortal() {
                               </TableRow>
                             );
                           }
-                          
                           return rows;
                         })()}
                       </TableBody>

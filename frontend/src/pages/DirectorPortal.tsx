@@ -118,6 +118,7 @@ export default function DirectorPortal() {
 
   // Rankings
   const [rankGrade, setRankGrade] = useState("9");
+  const [rankTerm, setRankTerm] = useState("Semester 1");
   const [rankStream, setRankStream] = useState("");
   const [rankSection, setRankSection] = useState("");
   const [rankSubSection, setRankSubSection] = useState("");
@@ -478,7 +479,10 @@ export default function DirectorPortal() {
 
     setLoadingRankings(true);
     try {
-      const filters: any = { grade_level: parseInt(rankGrade) };
+      const filters: any = {
+        grade_level: parseInt(rankGrade),
+        term: rankTerm,
+      };
       if (rankStream) filters.stream = rankStream;
       if (rankSection && rankSection !== "all") filters.section = rankSection;
       if (rankSubSection && rankSubSection !== "all") filters.sub_section = rankSubSection;
@@ -517,7 +521,7 @@ export default function DirectorPortal() {
       const filters: any = {
         grade_level: parseInt(rankGrade),
         stream: rankStream || undefined,
-        term,
+        term: rankTerm,
         academic_year: academicYear,
       };
       
@@ -854,6 +858,14 @@ export default function DirectorPortal() {
                       </SelectContent>
                     </Select>
                   )}
+                  <Select value={rankTerm} onValueChange={v => { setRankTerm(v); }}>
+                    <SelectTrigger className="rounded-xl"><SelectValue placeholder="Term" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Semester 1">Semester 1</SelectItem>
+                      <SelectItem value="Semester 2">Semester 2</SelectItem>
+                      <SelectItem value="overall">Overall (Both Semesters)</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <Select value={rankSection} onValueChange={setRankSection}>
                     <SelectTrigger className="rounded-xl"><SelectValue placeholder="Section" /></SelectTrigger>
                     <SelectContent>
@@ -877,9 +889,14 @@ export default function DirectorPortal() {
 
                 {rankings.length > 0 && (
                   <div className="flex items-center justify-between">
-                    <Badge variant="outline" className={cn("text-xs", rankingsPublished ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30" : "bg-amber-500/10 text-amber-600 border-amber-500/30")}>
-                      {rankingsPublished ? "Published — Students can see ranks" : "Unpublished — Students cannot see ranks"}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-xs">
+                        {rankTerm === "overall" ? "Overall — Both Semesters Combined" : rankTerm}
+                      </Badge>
+                      <Badge variant="outline" className={cn("text-xs", rankingsPublished ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30" : "bg-amber-500/10 text-amber-600 border-amber-500/30")}>
+                        {rankingsPublished ? "Published — Students can see ranks" : "Unpublished — Students cannot see ranks"}
+                      </Badge>
+                    </div>
                     <Button
                       onClick={togglePublishRankings}
                       disabled={publishingRankings}

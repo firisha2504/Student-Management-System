@@ -87,6 +87,7 @@ export default function Admin() {
   const [promoting, setPromoting] = useState(false);
   const [promotionResults, setPromotionResults] = useState<any>(null);
   const [promotionConfirmOpen, setPromotionConfirmOpen] = useState(false);
+  const [nextAcademicYear, setNextAcademicYear] = useState("");
   // Rollback
   const [rollingBack, setRollingBack] = useState(false);
   const [rollbackYear, setRollbackYear] = useState("");
@@ -305,12 +306,19 @@ export default function Admin() {
   };
 
   const handlePromoteStudents = async () => {
+    if (!nextAcademicYear.trim()) {
+      toast({ title: "Error", description: "Enter the next academic year first", variant: "destructive" });
+      return;
+    }
     setPromoting(true);
     setPromotionConfirmOpen(false);
     try {
-      const data = await api.promoteStudents();
+      const data = await api.promoteStudents(nextAcademicYear.trim().replace('/', '-'));
       setPromotionResults(data);
-      showSuccess("Year-End Promotion Complete", `${data.summary.promoted} promoted, ${data.summary.retained} retained, ${data.summary.graduated} graduated`);
+      showSuccess(
+        "Year-End Promotion Complete",
+        `${data.summary.promoted} promoted, ${data.summary.retained} retained, ${data.summary.graduated} graduated. Year advanced to ${data.new_year}.`
+      );
       fetchUsers();
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -1173,8 +1181,36 @@ export default function Admin() {
                   </div>
                   <div>
                     <p className="font-semibold text-foreground">Year-End Promotion</p>
-                    <p className="text-sm text-muted-foreground">Promote or retain students (≥50% = pass)</p>
+                    <p className="text-sm text-muted-foreground">Promote or retain students based on full-year average (≥50% = pass)</p>
                   </div>
+                </div>
+
+                {/* Requirements checklist */}
+                <div className="rounded-xl bg-muted/30 p-3 space-y-2 text-sm">
+                  <p className="font-semibold text-xs text-muted-foreground uppercase tracking-wide mb-2">Requirements before promotion</p>
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <span className="text-base">①</span>
+                    <span>Both Semester 1 and Semester 2 scores published by teachers</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <span className="text-base">②</span>
+                    <span>Academic year archived by registrar (Registrar → Academic Year)</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <span className="text-base">③</span>
+                    <span>Enter the next academic year below, then run promotion</span>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground">Next Academic Year (e.g. 2019-2020 E.C.)</label>
+                  <input
+                    type="text"
+                    value={nextAcademicYear}
+                    onChange={e => setNextAcademicYear(e.target.value)}
+                    placeholder="2019-2020 E.C."
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
                 </div>
 
                 {promotionResults && (
@@ -1195,8 +1231,14 @@ export default function Admin() {
                 )}
 
                 <Button 
-                  onClick={() => setPromotionConfirmOpen(true)} 
-                  disabled={promoting} 
+                  onClick={() => {
+                    if (!nextAcademicYear.trim()) {
+                      toast({ title: "Error", description: "Enter the next academic year first", variant: "destructive" });
+                      return;
+                    }
+                    setPromotionConfirmOpen(true);
+                  }}
+                  disabled={promoting || !nextAcademicYear.trim()}
                   className="w-full rounded-xl gradient-accent border-0 text-white h-11 font-semibold"
                 >
                   <ArrowUpCircle className="h-4 w-4 mr-2" />
@@ -1744,9 +1786,13 @@ export default function Admin() {
       <AlertDialog open={promotionConfirmOpen} onOpenChange={setPromotionConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Year-End Promotion</AlertDialogTitle>
+            <AlertDialogTitle>Run Year-End Promotion</AlertDialogTitle>
             <AlertDialogDescription>
-              Students ≥50% average will be promoted. Below 50% will be retained. <strong>This cannot be undone.</strong>
+              Students with full-year average ≥50% will be promoted to the next grade. Below 50% will be retained. Grade 12 students with ≥50% will graduate.
+              <br /><br />
+              Current year scores will be used. Academic year will advance to <strong>{nextAcademicYear}</strong> and reset to <strong>Semester 1</strong>.
+              <br /><br />
+              <strong>This cannot be undone.</strong> Use "Rollback Promotion" below if you need to reverse.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

@@ -37,7 +37,7 @@ const logoUpload = multer({
 
 // Promote students to next grade
 router.post('/promote-students', authenticate, authorize('admin'), [
-  body('academic_year').optional().matches(/^\d{4}-\d{4}$/)
+  body('next_academic_year').matches(/^\d{4}-\d{4}(\s*E\.C\.?)?$/i).withMessage('next_academic_year is required (e.g. 2019-2020 E.C.)')
 ], async (req, res) => {
   const connection = await pool.getConnection();
   
@@ -47,44 +47,63 @@ router.post('/promote-students', authenticate, authorize('admin'), [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    let { academic_year } = req.body;
+    const { next_academic_year } = req.body;
     
     // Get current academic year from system settings
     const [currentYearSettings] = await connection.query(
       "SELECT setting_value FROM system_settings WHERE setting_key = 'current_academic_year'"
     );
     const currentYear = currentYearSettings[0]?.setting_value;
-    
-    // Auto-generate new academic year if not provided
-    if (!academic_year) {
-      const now = new Date();
-      const year = now.getFullYear();
-      academic_year = `${year}-${year + 1}`;
+
+    if (!currentYear) {
+      return res.status(400).json({ error: 'Current academic year is not set in system settings.' });
+    }
+
+    // BLOCK: Year must be archived before promotion (ensures both semesters are done)
+    const [archived] = await connection.query(
+      'SELECT COUNT(*) as count FROM academic_year_results WHERE academic_year = ?',
+      [currentYear]
+    );
+
+    if (archived[0].count === 0) {
+      return res.status(400).json({
+        error: `Cannot run promotion: the year ${currentYear} has not been archived yet. Both semesters must be finished and the year must be archived before promoting students.`,
+        requires_archive: true
+      });
+    }
+
+    // BLOCK: Check both semesters have data
+    const [semData] = await connection.query(`
+      SELECT DISTINCT term FROM assessment_scores
+      WHERE academic_year = ? AND published = TRUE
+    `, [currentYear]);
+
+    const terms = semData.map(r => r.term);
+    const hasSem1 = terms.includes('Semester 1');
+    const hasSem2 = terms.includes('Semester 2');
+
+    if (!hasSem1 || !hasSem2) {
+      const missing = [];
+      if (!hasSem1) missing.push('Semester 1');
+      if (!hasSem2) missing.push('Semester 2');
+      return res.status(400).json({
+        error: `Cannot run promotion: ${missing.join(' and ')} scores are missing for ${currentYear}. Both semesters must be completed before year-end promotion.`,
+        missing_semesters: missing
+      });
     }
 
     await connection.beginTransaction();
 
-    // Get all students with their per-subject weighted averages from assessment_scores
-    const [students] = await connection.query(`
+    // Use the archived summaries (full-year, term=NULL) for promotion decisions
+    const [summaries] = await connection.query(`
       SELECT 
-        u.id as user_id,
-        p.full_name,
-        sp.grade_level,
-        sp.stream,
-        COALESCE(AVG(subject_totals.subject_score), 0) as average_score
-      FROM users u
-      INNER JOIN user_roles ur ON u.id = ur.user_id
-      INNER JOIN profiles p ON u.id = p.user_id
-      INNER JOIN student_profiles sp ON u.id = sp.user_id
-      LEFT JOIN (
-        SELECT s.student_id, at.subject_id, SUM(s.score) as subject_score
-        FROM assessment_scores s
-        INNER JOIN assessment_types at ON s.assessment_type_id = at.id
-        WHERE s.academic_year = ? AND s.published = TRUE
-        GROUP BY s.student_id, at.subject_id
-      ) subject_totals ON u.id = subject_totals.student_id
-      WHERE ur.role = 'student' AND sp.grade_level IS NOT NULL
-      GROUP BY u.id, p.full_name, sp.grade_level, sp.stream
+        ays.student_id,
+        ays.grade_level,
+        ays.average_score,
+        sp.stream
+      FROM academic_year_summaries ays
+      INNER JOIN student_profiles sp ON ays.student_id = sp.user_id
+      WHERE ays.academic_year = ? AND ays.term IS NULL
     `, [currentYear]);
 
     const results = [];
@@ -92,15 +111,14 @@ router.post('/promote-students', authenticate, authorize('admin'), [
     let retained = 0;
     let graduated = 0;
 
-    for (const student of students) {
+    for (const student of summaries) {
       const gradeLevel = student.grade_level;
-      const average = student.average_score || 0;
+      const average = parseFloat(student.average_score) || 0;
       
       let status;
       let newGrade;
       let newStream = student.stream;
 
-      // Determine promotion status
       if (gradeLevel >= 12) {
         if (average >= 50) {
           status = 'graduated';
@@ -115,36 +133,30 @@ router.post('/promote-students', authenticate, authorize('admin'), [
         const passed = average >= 50;
         status = passed ? 'promoted' : 'retained';
         newGrade = passed ? gradeLevel + 1 : gradeLevel;
-        
-        if (passed) {
-          promoted++;
-        } else {
-          retained++;
-        }
-        
-        // Reset stream when promoting from grade 10 to 11
-        if (status === 'promoted' && gradeLevel === 10) {
-          newStream = null;
-        }
+        if (passed) promoted++; else retained++;
+        if (status === 'promoted' && gradeLevel === 10) newStream = null;
       }
 
-      // Update student profile with new grade
       if (newGrade !== null) {
         await connection.query(
           'UPDATE student_profiles SET grade_level = ?, stream = ? WHERE user_id = ?',
-          [newGrade, newStream, student.user_id]
+          [newGrade, newStream, student.student_id]
         );
       } else {
-        // Graduated - optionally deactivate or mark as alumni
         await connection.query(
-          'UPDATE profiles SET is_active = ? WHERE user_id = ?',
-          [false, student.user_id]
+          'UPDATE profiles SET is_active = FALSE WHERE user_id = ?',
+          [student.student_id]
         );
       }
 
+      // Update summary status
+      await connection.query(
+        `UPDATE academic_year_summaries SET status = ? WHERE student_id = ? AND academic_year = ?`,
+        [status, student.student_id, currentYear]
+      );
+
       results.push({
-        user_id: student.user_id,
-        full_name: student.full_name,
+        user_id: student.student_id,
         old_grade: gradeLevel,
         new_grade: newGrade,
         average: Math.round(average * 100) / 100,
@@ -152,24 +164,24 @@ router.post('/promote-students', authenticate, authorize('admin'), [
       });
     }
 
-    // Update system settings to new academic year
+    // Update system academic year to next year, reset to Semester 1
     await connection.query(
       "UPDATE system_settings SET setting_value = ? WHERE setting_key = 'current_academic_year'",
-      [academic_year]
+      [next_academic_year]
+    );
+    await connection.query(
+      "UPDATE system_settings SET setting_value = 'Semester 1' WHERE setting_key = 'current_term'"
     );
 
     await connection.commit();
 
     res.json({
       success: true,
-      summary: {
-        total: results.length,
-        promoted,
-        retained,
-        graduated
-      },
+      summary: { total: results.length, promoted, retained, graduated },
       results,
-      message: `Academic year updated to ${academic_year}. Students must now register for the new year.`
+      previous_year: currentYear,
+      new_year: next_academic_year,
+      message: `Promotion complete. Academic year advanced to ${next_academic_year} · Semester 1.`
     });
   } catch (error) {
     await connection.rollback();

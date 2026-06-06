@@ -108,8 +108,10 @@ router.get('/my-class-rankings', authenticate, authorize('teacher'), async (req,
     const requiredSubjects = subjectCount[0]?.total_subjects || 0;
     
     // Get rankings for students in this teacher's homeroom.
-    // Pre-aggregate scores per subject first, then average across subjects
-    // to avoid inflating averages for subjects with multiple assessment components.
+    // Pre-aggregate scores per subject first, then average across subjects.
+    // If currentTerm = 'overall', combine both semesters.
+    const isOverall = currentTerm === 'overall';
+
     const [rankings] = await pool.query(
       `SELECT 
         u.id as user_id,
@@ -132,14 +134,17 @@ router.get('/my-class-rankings', authenticate, authorize('teacher'), async (req,
           SUM(s.score) as subject_score
         FROM assessment_scores s
         INNER JOIN assessment_types at ON s.assessment_type_id = at.id
-        WHERE s.term = ? AND s.academic_year = ? AND s.published = TRUE
+        WHERE s.academic_year = ? AND s.published = TRUE
+        ${isOverall ? '' : 'AND s.term = ?'}
         GROUP BY s.student_id, at.subject_id
       ) subject_totals ON u.id = subject_totals.student_id
       WHERE sp.homeroom_teacher_id = ?
       GROUP BY u.id, p.full_name, sp.admission_number, sp.grade_level, sp.section, sp.sub_section, sp.stream
       HAVING COUNT(DISTINCT subject_totals.subject_id) >= ?
       ORDER BY average_score DESC`,
-      [currentTerm, currentYear, teacherId, requiredSubjects]
+      isOverall
+        ? [currentYear, teacherId, requiredSubjects]
+        : [currentYear, currentTerm, teacherId, requiredSubjects]
     );
     
     // Add rank to each student

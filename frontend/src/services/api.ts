@@ -166,10 +166,10 @@ export const api = {
     });
   },
 
-  async promoteStudents(academicYear?: string) {
+  async promoteStudents(nextAcademicYear?: string) {
     return apiRequest('/admin/promote-students', {
       method: 'POST',
-      body: JSON.stringify({ academic_year: academicYear }),
+      body: JSON.stringify({ next_academic_year: nextAcademicYear }),
     });
   },
 

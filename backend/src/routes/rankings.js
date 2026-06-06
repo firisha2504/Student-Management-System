@@ -73,8 +73,9 @@ router.get('/by-grade', authenticate, async (req, res) => {
     console.log('Required subjects for grade', grade_level, 'stream', stream, ':', requiredSubjects);
     
     // Compute per-subject weighted totals first, then average across subjects.
-    // Each assessment score is a raw score out of its weight value; we sum scores
-    // per subject to get the subject total, then average those totals across subjects.
+    // If term = 'overall', combine both semesters; otherwise filter by term.
+    const isOverall = currentTerm === 'overall';
+
     let query = `
       SELECT 
         u.id as user_id,
@@ -96,15 +97,17 @@ router.get('/by-grade', authenticate, async (req, res) => {
           SUM(s.score) as subject_score
         FROM assessment_scores s
         INNER JOIN assessment_types at ON s.assessment_type_id = at.id
-        WHERE s.term = ?
-        AND s.academic_year = ?
+        WHERE s.academic_year = ?
         AND s.published = TRUE
+        ${isOverall ? '' : 'AND s.term = ?'}
         GROUP BY s.student_id, at.subject_id
       ) subject_totals ON u.id = subject_totals.student_id
       WHERE sp.grade_level = ?
     `;
     
-    const params = [currentTerm, currentYear, grade_level];
+    const params = isOverall
+      ? [currentYear, grade_level]
+      : [currentYear, currentTerm, grade_level];
     
     if (stream) {
       query += ' AND sp.stream = ?';
