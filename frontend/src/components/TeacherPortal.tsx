@@ -162,8 +162,8 @@ export default function TeacherPortal() {
       const subjects = [...new Set((data || []).map((sc: any) => sc.subject_name ?? "Unknown Subject"))];
       setExpandedSubjects(new Set(subjects as string[]));
       // Auto-collapse all terms EXCEPT the current active term
-      const allTermsInData = [...new Set((data || []).map((sc: any) => sc.term ?? 'Unknown'))];
-      const toCollapse = new Set(allTermsInData.filter(t => t !== term));
+      const allTermsInData: string[] = [...new Set<string>((data || []).map((sc: any) => String(sc.term ?? 'Unknown')))];
+      const toCollapse = new Set<string>(allTermsInData.filter(t => t !== term));
       setCollapsedViewTerms(toCollapse);
     } catch {
       setSavedScores([]);
