@@ -257,7 +257,7 @@ router.post('/scores', authenticate, authorize('teacher', 'admin'), [
   body('assessment_type_id').isInt(),
   body('score').isFloat({ min: 0, max: 100 }),
   body('term').notEmpty(),
-  body('academic_year').matches(/^\d{4}-\d{4}(\s*E\.C\.?)?$/i)
+  body('academic_year').matches(/^\d{4}\s*E\.C\.?$/i)
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -321,7 +321,7 @@ router.post('/scores/bulk', authenticate, authorize('teacher', 'admin'), [
   body('scores.*.assessment_type_id').isInt(),
   body('scores.*.score').isFloat({ min: 0, max: 100 }),
   body('term').notEmpty(),
-  body('academic_year').matches(/^\d{4}-\d{4}(\s*E\.C\.?)?$/i)
+  body('academic_year').matches(/^\d{4}\s*E\.C\.?$/i)
 ], async (req, res) => {
   const connection = await pool.getConnection();
   

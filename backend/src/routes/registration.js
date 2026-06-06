@@ -12,7 +12,7 @@ router.get('/current-period', authenticate, async (req, res) => {
       "SELECT setting_value FROM system_settings WHERE setting_key IN ('current_academic_year', 'current_term')"
     );
     
-    const academicYear = settings.find(s => s.setting_key === 'current_academic_year')?.setting_value || '2025-2026';
+    const academicYear = settings.find(s => s.setting_key === 'current_academic_year')?.setting_value || '2018 E.C.';
     const term = settings.find(s => s.setting_key === 'current_term')?.setting_value || 'Fall';
     
     res.json({ academicYear, term });
@@ -29,7 +29,7 @@ router.get('/my-status', authenticate, authorize('student'), async (req, res) =>
     const [settings] = await pool.query(
       "SELECT setting_value FROM system_settings WHERE setting_key = 'current_academic_year'"
     );
-    const academicYear = settings[0]?.setting_value || '2025-2026';
+    const academicYear = settings[0]?.setting_value || '2018 E.C.';
     
     // Check if student has registered
     const [registrations] = await pool.query(
@@ -132,7 +132,7 @@ router.post('/register', authenticate, authorize('student'), [
     const [settings] = await connection.query(
       "SELECT setting_value FROM system_settings WHERE setting_key IN ('current_academic_year', 'current_term')"
     );
-    const academicYear = settings.find(s => s.setting_key === 'current_academic_year')?.setting_value || '2025-2026';
+    const academicYear = settings.find(s => s.setting_key === 'current_academic_year')?.setting_value || '2018 E.C.';
     const term = settings.find(s => s.setting_key === 'current_term')?.setting_value || 'Fall';
     
     await connection.beginTransaction();
@@ -249,7 +249,7 @@ router.get('/unregistered', authenticate, authorize('admin', 'registrar', 'direc
       const [settings] = await pool.query(
         "SELECT setting_value FROM system_settings WHERE setting_key = 'current_academic_year'"
       );
-      year = settings[0]?.setting_value || '2025-2026';
+      year = settings[0]?.setting_value || '2018 E.C.';
     }
     
     // Get all active students who haven't registered

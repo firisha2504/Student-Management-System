@@ -158,7 +158,7 @@ export default function AcademicHistory({ studentId }: AcademicHistoryProps) {
               <CardHeader className="cursor-pointer hover:bg-muted/30 transition-colors">
                 <div className="flex items-center justify-between">
                   <div>
-                    <CardTitle className="text-lg">{year.academic_year.replace('-', '/')}</CardTitle>
+                    <CardTitle className="text-lg">{year.academic_year}</CardTitle>
                     <p className="text-sm text-muted-foreground">
                       Grade {year.grade_level}{year.stream ? ` · ${year.stream}` : ''}
                     </p>

@@ -28,9 +28,9 @@ router.patch('/current', authenticate, authorize('registrar', 'admin'), async (r
   try {
     const { academic_year, term } = req.body;
 
-    // Validate format - accept both Gregorian (YYYY-YYYY) and Ethiopian (YYYY-YYYY E.C.) formats
-    if (academic_year && !/^\d{4}-\d{4}(\s*E\.C\.?)?$/i.test(academic_year)) {
-      return res.status(400).json({ error: 'Invalid academic_year format. Use YYYY-YYYY (e.g. 2025-2026) or YYYY-YYYY E.C. (e.g. 2018-2019 E.C.)' });
+    // Validate format - only Ethiopian Calendar single-year format: YYYY E.C.
+    if (academic_year && !/^\d{4}\s*E\.C\.?$/i.test(academic_year)) {
+      return res.status(400).json({ error: 'Invalid academic_year format. Use Ethiopian Calendar format: YYYY E.C. (e.g. 2018 E.C.)' });
     }
 
     if (academic_year !== undefined) {
@@ -55,7 +55,7 @@ router.patch('/current', authenticate, authorize('registrar', 'admin'), async (r
 
 // Archive academic year (Registrar only)
 router.post('/archive', authenticate, authorize('registrar', 'admin'), [
-  body('academic_year').matches(/^\d{4}-\d{4}(\s*E\.C\.?)?$/i)
+  body('academic_year').matches(/^\d{4}\s*E\.C\.?$/i)
 ], async (req, res) => {
   const connection = await pool.getConnection();
   
@@ -379,8 +379,8 @@ router.delete('/archive/:academicYear', authenticate, authorize('admin', 'regist
 
 // Year-end promotion (Admin only)
 router.post('/promote', authenticate, authorize('admin'), [
-  body('current_year').matches(/^\d{4}-\d{4}(\s*E\.C\.?)?$/i),
-  body('next_year').matches(/^\d{4}-\d{4}(\s*E\.C\.?)?$/i)
+  body('current_year').matches(/^\d{4}\s*E\.C\.?$/i),
+  body('next_year').matches(/^\d{4}\s*E\.C\.?$/i)
 ], async (req, res) => {
   const connection = await pool.getConnection();
   

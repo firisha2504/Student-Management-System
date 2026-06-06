@@ -84,8 +84,7 @@ export default function TeacherPortal() {
 
   const [successModal, setSuccessModal] = useState<{ title: string; description?: string } | null>(null);
   const [term, setTerm] = useState("Semester 1");
-  const currentYear = new Date().getFullYear();
-  const [academicYear, setAcademicYear] = useState(`${currentYear}-${currentYear + 1}`);
+  const [academicYear, setAcademicYear] = useState('');
 
   // Load teacher assignments + subjects on mount
   useEffect(() => {

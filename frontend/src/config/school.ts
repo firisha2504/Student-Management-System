@@ -60,9 +60,9 @@ export const DEFAULT_SCHOOL_CONFIG: SchoolConfig = {
     sections: ['oromo', 'amharic', 'somali'],
     subSections: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'],
     terms: ['Semester 1', 'Semester 2'],
-    calendarSystem: 'both',
+    calendarSystem: 'ethiopian',
     primaryCalendar: 'ethiopian',
-    enableCalendarConversion: true
+    enableCalendarConversion: false
   },
   idPrefixes: {
     student: 'MJS',

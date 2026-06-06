@@ -266,7 +266,7 @@ router.get('/children/:studentId/ranking', authenticate, authorize('parent'), as
       "SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ('current_term', 'current_academic_year')"
     );
     const currentTerm = term || settings.find(s => s.setting_key === 'current_term')?.setting_value || 'Semester 1';
-    const currentYear = academic_year || settings.find(s => s.setting_key === 'current_academic_year')?.setting_value || '2025-2026';
+    const currentYear = academic_year || settings.find(s => s.setting_key === 'current_academic_year')?.setting_value || '2018 E.C.';
 
     // Get student info
     const [studentInfo] = await pool.query(`

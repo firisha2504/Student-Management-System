@@ -28,7 +28,7 @@ router.get('/by-grade', authenticate, async (req, res) => {
       "SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ('current_term', 'current_academic_year')"
     );
     const currentTerm = term || settings.find(s => s.setting_key === 'current_term')?.setting_value || 'Semester 1';
-    const currentYear = academic_year || settings.find(s => s.setting_key === 'current_academic_year')?.setting_value || '2025-2026';
+    const currentYear = academic_year || settings.find(s => s.setting_key === 'current_academic_year')?.setting_value || '2018 E.C.';
     
     // For students, check if rankings are approved
     if (userRole === 'student') {
@@ -310,7 +310,7 @@ router.get('/approval-status', authenticate, async (req, res) => {
       "SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ('current_term', 'current_academic_year')"
     );
     const currentTerm = term || settings.find(s => s.setting_key === 'current_term')?.setting_value || 'Semester 1';
-    const currentYear = academic_year || settings.find(s => s.setting_key === 'current_academic_year')?.setting_value || '2025-2026';
+    const currentYear = academic_year || settings.find(s => s.setting_key === 'current_academic_year')?.setting_value || '2018 E.C.';
     
     console.log('Rankings approval check - Grade:', grade_level, 'Stream:', stream, 'Term:', currentTerm, 'Year:', currentYear);
     
@@ -346,7 +346,7 @@ router.get('/top10', authenticate, authorize('director'), async (req, res) => {
       "SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ('current_term', 'current_academic_year')"
     );
     const currentTerm = term || settings.find(s => s.setting_key === 'current_term')?.setting_value || 'Semester 1';
-    const currentYear = academic_year || settings.find(s => s.setting_key === 'current_academic_year')?.setting_value || '2025-2026';
+    const currentYear = academic_year || settings.find(s => s.setting_key === 'current_academic_year')?.setting_value || '2018 E.C.';
     
     // Build query to calculate top 10 rankings across all grades using assessment_scores
     // Use per-subject totals to correctly compute averages

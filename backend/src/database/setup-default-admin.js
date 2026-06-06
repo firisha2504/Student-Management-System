@@ -45,12 +45,11 @@ async function setupDefaultAdmin() {
     // 3. Set up system settings
     console.log('⚙️  Setting up system settings...');
     
-    const currentYear = new Date().getFullYear();
-    const academicYear = `${currentYear}-${currentYear + 1}`;
+    const academicYear = '2018 E.C.';
     
     const settings = [
       ['current_academic_year', academicYear],
-      ['current_term', 'Term 1'],
+      ['current_term', 'Semester 1'],
       ['school_name', 'Grade Hub School'],
       ['registration_open', 'true'],
     ];

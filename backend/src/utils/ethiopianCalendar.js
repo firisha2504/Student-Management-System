@@ -115,10 +115,10 @@ export function ethiopianToGregorian(ethYear, ethMonth, ethDay) {
 /**
  * Generate Ethiopian academic year string
  * @param {number} ethYear - Ethiopian year
- * @returns {string} Academic year string (e.g., "2016-2017 E.C.")
+ * @returns {string} Academic year string (e.g., "2018 E.C.")
  */
 export function getEthiopianAcademicYear(ethYear) {
-  return `${ethYear}-${ethYear + 1} E.C.`;
+  return `${ethYear} E.C.`;
 }
 
 /**

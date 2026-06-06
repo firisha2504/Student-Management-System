@@ -123,7 +123,7 @@ export function ethiopianToGregorian(ethYear: number, ethMonth: number, ethDay: 
  * Generate Ethiopian academic year string
  */
 export function getEthiopianAcademicYear(ethYear: number): string {
-  return `${ethYear}-${ethYear + 1} E.C.`;
+  return `${ethYear} E.C.`;
 }
 
 /**

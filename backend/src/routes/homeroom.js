@@ -13,7 +13,7 @@ router.get('/my-homeroom', authenticate, authorize('teacher'), async (req, res) 
     const [settings] = await pool.query(
       "SELECT setting_value FROM system_settings WHERE setting_key = 'current_academic_year'"
     );
-    const currentYear = settings[0]?.setting_value || new Date().getFullYear().toString();
+    const currentYear = settings[0]?.setting_value || '2018 E.C.';
     
     const [assignments] = await pool.query(
       `SELECT * FROM homeroom_assignments 
@@ -71,7 +71,7 @@ router.get('/my-class-rankings', authenticate, authorize('teacher'), async (req,
       "SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ('current_term', 'current_academic_year')"
     );
     const currentTerm = term || settings.find(s => s.setting_key === 'current_term')?.setting_value || 'Semester 1';
-    const currentYear = academic_year || settings.find(s => s.setting_key === 'current_academic_year')?.setting_value || '2024-2025';
+    const currentYear = academic_year || settings.find(s => s.setting_key === 'current_academic_year')?.setting_value || '2018 E.C.';
     
     // Get homeroom assignment to determine grade level and stream
     const [homeroomInfo] = await pool.query(

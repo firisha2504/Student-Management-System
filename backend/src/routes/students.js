@@ -245,7 +245,7 @@ router.get('/me/stats', authenticate, authorize('student'), async (req, res) => 
     // Get current academic year and term from system settings
     const [settings] = await pool.query('SELECT setting_key, setting_value FROM system_settings');
     const currentTerm = settings.find(s => s.setting_key === 'current_term')?.setting_value || 'Semester 1';
-    const currentYear = settings.find(s => s.setting_key === 'current_academic_year')?.setting_value || '2025-2026';
+    const currentYear = settings.find(s => s.setting_key === 'current_academic_year')?.setting_value || '2018 E.C.';
     
     // Check if rankings are approved for this student's grade/stream
     const [approval] = await pool.query(

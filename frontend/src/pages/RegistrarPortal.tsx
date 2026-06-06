@@ -156,24 +156,23 @@ export default function RegistrarPortal() {
 
   useEffect(() => {
     api.getCurrentAcademicYear().then((d: any) => {
-      if (d?.academic_year) { setCurrentAcademicYear(d.academic_year); setSettingYear(d.academic_year.replace('-', '/')); }
+      if (d?.academic_year) { setCurrentAcademicYear(d.academic_year); setSettingYear(d.academic_year); }
       if (d?.term) { setCurrentTerm(d.term); setSettingTerm(d.term); }
     }).catch(() => {});
   }, []);
 
   const handleSaveSettings = async () => {
-    // Trim the year to remove extra spaces
     const trimmedYear = settingYear.trim();
-    if (!trimmedYear || !/^\d{4}[\/\-]\d{4}(\s*E\.C\.?)?$/i.test(trimmedYear)) {
-      toast({ title: "Error", description: "Enter a valid year (e.g., 2025/2026 or 2018-2019 E.C.)", variant: "destructive" }); return;
+    if (!trimmedYear || !/^\d{4}\s*E\.C\.?$/i.test(trimmedYear)) {
+      toast({ title: "Error", description: "Enter a valid year (e.g., 2018 E.C.)", variant: "destructive" }); return;
     }
     setSavingSettings(true);
     try {
-      const formatted = trimmedYear.replace('/', '-');
+      const formatted = trimmedYear;
       await api.setCurrentAcademicYear({ academic_year: formatted, term: settingTerm || undefined });
       setCurrentAcademicYear(formatted);
       setCurrentTerm(settingTerm || null);
-      toast({ title: "Saved", description: `Active year set to ${settingYear}` });
+      toast({ title: "Saved", description: `Active year set to ${formatted}` });
     } catch (e: any) {
       toast({ title: "Error", description: e.message, variant: "destructive" });
     }
@@ -184,8 +183,7 @@ export default function RegistrarPortal() {
     setArchiving(true);
     setArchiveConfirmOpen(false);
     try {
-      // Convert format from 2025/2026 to 2025-2026, trim extra spaces
-      const formattedYear = archiveYear.trim().replace('/', '-');
+      const formattedYear = archiveYear.trim();
       const result = await api.archiveAcademicYear(formattedYear);
       toast({ 
         title: "Success", 
@@ -1481,7 +1479,7 @@ export default function RegistrarPortal() {
                   {currentAcademicYear && (
                     <div className="flex items-center gap-2">
                       <Badge className="gradient-accent border-0 text-white font-mono text-xs px-3 py-1">
-                        {currentAcademicYear.replace('-', '/')}
+                        {currentAcademicYear}
                         {currentTerm ? ` · ${currentTerm}` : ''}
                       </Badge>
                       <Button
@@ -1508,8 +1506,8 @@ export default function RegistrarPortal() {
                   <div className="space-y-1">
                     <Label className="text-xs">Academic Year</Label>
                     <SimpleAcademicYearSelect
-                      value={settingYear.replace(/\//g, '-')}
-                      onValueChange={(value) => setSettingYear(value.replace(/-/g, '/'))}
+                      value={settingYear}
+                      onValueChange={(value) => setSettingYear(value)}
                       placeholder="Select academic year"
                       className="h-10 rounded-xl"
                     />
@@ -1539,8 +1537,8 @@ export default function RegistrarPortal() {
                 <div className="space-y-2">
                   <Label className="text-xs">Academic Year to Archive</Label>
                   <SimpleAcademicYearSelect
-                    value={archiveYear.replace('/', '-')}
-                    onValueChange={(value) => setArchiveYear(value.replace('-', '/'))}
+                    value={archiveYear}
+                    onValueChange={(value) => setArchiveYear(value)}
                     placeholder="Select year to archive"
                     className="h-10 rounded-xl"
                   />
@@ -1548,7 +1546,7 @@ export default function RegistrarPortal() {
                 <Button
                   onClick={() => {
                     const trimmedYear = archiveYear.trim();
-                    if (!trimmedYear || !/^\d{4}[\/\-]\d{4}(\s*E\.C\.?)?$/i.test(trimmedYear)) { toast({ title: "Error", description: "Please enter a valid academic year (e.g., 2025-2026 or 2018-2019 E.C.)", variant: "destructive" }); return; }
+                    if (!trimmedYear || !/^\d{4}\s*E\.C\.?$/i.test(trimmedYear)) { toast({ title: "Error", description: "Please enter a valid academic year (e.g., 2018 E.C.)", variant: "destructive" }); return; }
                     setArchiveConfirmOpen(true);
                   }}
                   disabled={archiving}
@@ -1573,7 +1571,7 @@ export default function RegistrarPortal() {
                     {archivedYears.map((year) => (
                       <div key={year.academic_year} className="flex items-center justify-between p-3 rounded-lg border">
                         <div>
-                          <p className="font-medium">{year.academic_year.replace('-', '/')}</p>
+                          <p className="font-medium">{year.academic_year}</p>
                           <p className="text-sm text-muted-foreground">{year.student_count} student(s) archived · {new Date(year.archived_at).toLocaleDateString()}</p>
                         </div>
                         <div className="flex items-center gap-2">
@@ -1818,7 +1816,7 @@ export default function RegistrarPortal() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Archived Year</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete the archived data for <strong>{deleteYearConfirm?.replace('-', '/')}</strong>? This will permanently remove all archived student results for this year. This action cannot be undone.
+              Are you sure you want to delete the archived data for <strong>{deleteYearConfirm}</strong>? This will permanently remove all archived student results for this year. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1837,9 +1835,9 @@ export default function RegistrarPortal() {
       <AlertDialog open={!!reArchiveConfirm} onOpenChange={() => setReArchiveConfirm(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Re-Archive {reArchiveConfirm?.replace('-', '/')}</AlertDialogTitle>
+            <AlertDialogTitle>Re-Archive {reArchiveConfirm}</AlertDialogTitle>
             <AlertDialogDescription>
-              This will <strong>delete the current archived data</strong> for <strong>{reArchiveConfirm?.replace('-', '/')}</strong> so you can fix scores and re-archive.
+              This will <strong>delete the current archived data</strong> for <strong>{reArchiveConfirm}</strong> so you can fix scores and re-archive.
               <br /><br />
               After confirming:
               <br />• Fix any incorrect scores in the Teacher Portal

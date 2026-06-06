@@ -313,7 +313,7 @@ export default function Admin() {
     setPromoting(true);
     setPromotionConfirmOpen(false);
     try {
-      const data = await api.promoteStudents(nextAcademicYear.trim().replace('/', '-'));
+      const data = await api.promoteStudents(nextAcademicYear.trim());
       setPromotionResults(data);
       showSuccess(
         "Year-End Promotion Complete",
@@ -331,7 +331,7 @@ export default function Admin() {
     setRollingBack(true);
     setRollbackConfirmOpen(false);
     try {
-      const formatted = rollbackYear.trim().replace('/', '-');
+      const formatted = rollbackYear.trim();
       const data = await api.rollbackPromotion(formatted);
       setRollbackResults(data);
       showSuccess("Rollback Complete", `Restored ${data.restored} student(s), reactivated ${data.reactivated} graduated student(s).`);
@@ -1203,7 +1203,7 @@ export default function Admin() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-muted-foreground">Next Academic Year (e.g. 2019-2020 E.C.)</label>
+                  <label className="text-xs font-medium text-muted-foreground">Next Academic Year (Ethiopian Calendar, e.g. 2019-2020 E.C.)</label>
                   <input
                     type="text"
                     value={nextAcademicYear}
@@ -1261,12 +1261,12 @@ export default function Admin() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-muted-foreground">Academic Year to Rollback (e.g. 2018-2019 E.C.)</label>
+                  <label className="text-xs font-medium text-muted-foreground">Academic Year to Rollback (Ethiopian Calendar, e.g. 2018 E.C.)</label>
                   <input
                     type="text"
                     value={rollbackYear}
                     onChange={e => setRollbackYear(e.target.value)}
-                    placeholder="2018-2019 E.C."
+                    placeholder="2018 E.C."
                     className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                   />
                 </div>

@@ -35,17 +35,17 @@ export const SCHOOL_CONFIG = {
       process.env.TERMS.split(',').map(t => t.trim()) : 
       ['Semester 1', 'Semester 2'],
     
-    currentYear: process.env.CURRENT_ACADEMIC_YEAR || '2025-2026',
+    currentYear: process.env.CURRENT_ACADEMIC_YEAR || '2018 E.C.',
     currentTerm: process.env.CURRENT_TERM || 'Semester 1',
     
     // Calendar System Configuration
-    calendarSystem: process.env.CALENDAR_SYSTEM || 'both', // 'gregorian', 'ethiopian', 'both'
-    primaryCalendar: process.env.PRIMARY_CALENDAR || 'gregorian', // Default display calendar
+    calendarSystem: process.env.CALENDAR_SYSTEM || 'ethiopian', // 'gregorian', 'ethiopian', 'both'
+    primaryCalendar: process.env.PRIMARY_CALENDAR || 'ethiopian', // Default display calendar
     enableCalendarConversion: process.env.ENABLE_CALENDAR_CONVERSION !== 'false', // Default true
     
     // Default fallbacks for system
     defaultTerm: 'Semester 1',
-    defaultYear: '2025-2026'
+    defaultYear: '2018 E.C.'
   },
 
   // ID Generation

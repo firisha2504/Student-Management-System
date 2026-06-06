@@ -289,7 +289,7 @@ export default function DirectorPortal() {
     try {
       // Get current academic year from system settings instead of calculating
       const yearData = await api.getCurrentAcademicYear();
-      const currentAcademicYear = yearData?.academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
+      const currentAcademicYear = yearData?.academic_year || '2018 E.C.';
       const data = await api.getHomeroomAssignments({ academic_year: currentAcademicYear });
       setHomeroomAssignments(data || []);
     } catch (err: any) {
@@ -314,7 +314,7 @@ export default function DirectorPortal() {
     try {
       // Get current academic year from system settings
       const yearData = await api.getCurrentAcademicYear();
-      const currentAcademicYear = yearData?.academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
+      const currentAcademicYear = yearData?.academic_year || '2018 E.C.';
       
       const assignmentData = {
         teacher_id: selectedHomeroomTeacher,
@@ -515,7 +515,7 @@ export default function DirectorPortal() {
     setPublishingRankings(true);
     try {
       const yearData = await api.getCurrentAcademicYear();
-      const academicYear = yearData?.academic_year || '2025-2026';
+      const academicYear = yearData?.academic_year || '2018 E.C.';
       const term = yearData?.term || 'Semester 1';
 
       const filters: any = {
@@ -547,7 +547,7 @@ export default function DirectorPortal() {
     setBulkApproving(true);
     try {
       const yearData = await api.getCurrentAcademicYear();
-      const academicYear = yearData?.academic_year || '2025-2026';
+      const academicYear = yearData?.academic_year || '2018 E.C.';
       const term = yearData?.term || 'Semester 1';
 
       const data = await api.approveAllRankings({ term, academic_year: academicYear });

@@ -37,7 +37,7 @@ const logoUpload = multer({
 
 // Promote students to next grade
 router.post('/promote-students', authenticate, authorize('admin'), [
-  body('next_academic_year').matches(/^\d{4}-\d{4}(\s*E\.C\.?)?$/i).withMessage('next_academic_year is required (e.g. 2019-2020 E.C.)')
+  body('next_academic_year').matches(/^\d{4}\s*E\.C\.?$/i).withMessage('next_academic_year must be in Ethiopian Calendar format (e.g. 2019 E.C.)')
 ], async (req, res) => {
   const connection = await pool.getConnection();
   
@@ -463,7 +463,7 @@ router.get('/debug/students', authenticate, authorize('admin', 'director'), asyn
 // Rollback year-end promotion (Admin only)
 // Restores student grade levels to what they were in the archived year summary
 router.post('/rollback-promotion', authenticate, authorize('admin'), [
-  body('academic_year').matches(/^\d{4}-\d{4}(\s*E\.C\.?)?$/i)
+  body('academic_year').matches(/^\d{4}\s*E\.C\.?$/i)
 ], async (req, res) => {
   const connection = await pool.getConnection();
 
